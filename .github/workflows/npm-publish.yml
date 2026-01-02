@@ -1,33 +1,95 @@
-# This workflow will run tests using node and then publish a package to GitHub Packages when a release is created
-# For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
-
-name: Node.js Package
+name: Release Pipeline
 
 on:
   release:
     types: [created]
+  workflow_dispatch: # Manual trigger dari GitHub UI
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x] # Test di 2 versi Node.js
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm ci
-      - run: npm test
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Run unit tests
+      run: npm test
+    
+    - name: Run integration tests
+      run: node --test test/integration.test.js
+      if: always() # Run even if unit tests fail
 
   publish-npm:
-    needs: build
+    needs: test
     runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org/
-      - run: npm ci
-      - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{secrets.npm_token}}
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        registry-url: 'https://registry.npmjs.org/'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: npm ci
+    
+    - name: Get version from tag
+      id: get_version
+      run: |
+        # Extract v1.0.0 → 1.0.0
+        VERSION="${GITHUB_REF#refs/tags/v}"
+        echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+        echo "Publishing version: ${VERSION}"
+    
+    - name: Verify package version
+      run: |
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+        TAG_VERSION="${{ steps.get_version.outputs.VERSION }}"
+        
+        if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+          echo "Version mismatch!"
+          echo "   package.json: $PACKAGE_VERSION"
+          echo "   Git tag: $TAG_VERSION"
+          exit 1
+        fi
+        echo "Version match: $PACKAGE_VERSION"
+    
+    - name: Build package (dry run)
+      run: npm pack --dry-run
+    
+    - name: Publish to npm
+      run: npm publish
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    
+    - name: Verify publication
+      run: |
+        sleep 5 # Wait for npm propagation
+        npm view keypointjs@${{ steps.get_version.outputs.VERSION }} version
+        echo "Successfully published to npm!"
+    
+    - name: Update release notes
+      if: success()
+      run: |
+        echo "## Published to npm" >> $GITHUB_STEP_SUMMARY
+        echo "- Version: ${{ steps.get_version.outputs.VERSION }}" >> $GITHUB_STEP_SUMMARY
+        echo "- npm: https://www.npmjs.com/package/keypointjs" >> $GITHUB_STEP_SUMMARY
+        echo "- Install: \`npm install keypointjs\`" >> $GITHUB_STEP_SUMMARY
