@@ -1,5 +1,11 @@
 # KeypointJS - Complete Documentation
 
+<div align="center">
+
+![KeypointJS Banner](./assets/banner.png)
+
+</div>
+
 Based on your complete codebase, here is the comprehensive documentation:
 
 <div align="center">
