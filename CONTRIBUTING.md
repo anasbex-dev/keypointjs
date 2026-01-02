@@ -29,7 +29,7 @@ We love your input! We want to make contributing to KeypointJS as easy and trans
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/keypointjs.git
+git clone https://github.com/anasbex-dev/keypointjs.git
 
 # Install dependencies
 npm install
