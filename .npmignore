@@ -1,0 +1,29 @@
+# Development files
+.git/
+.gitignore
+.npmignore
+.github/
+
+# Testing
+test/
+coverage/
+
+# Development config
+.eslintrc.js
+.prettierrc
+.editorconfig
+
+# Build outputs
+dist/
+build/
+
+# Environment
+.env
+.env.example
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

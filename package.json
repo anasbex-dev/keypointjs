@@ -29,7 +29,6 @@
     "start": "node examples/server.js",
     "lint": "eslint src/ test/",
     "lint:fix": "eslint src/ test/ --fix",
-    "prepare": "npm run lint",
     "prepublishOnly": "npm test"
   },
   "keywords": [
