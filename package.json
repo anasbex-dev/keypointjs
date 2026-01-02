@@ -1,51 +1,78 @@
 {
-  "name": "KeypointJS",
+  "name": "keypointjs",
   "version": "1.0.0",
-  "description": "Identity-first API framework with mandatory keypoint authentication",
-  "main": "src/KeypointJS.js",
+  "description": "KeypointJS Identity-First API Framework with Mandatory Authentication",
+  "main": "src/keypointJS.js",
   "type": "module",
+  "exports": {
+    ".": "./src/KeypointJS.js",
+    "./keypoint": "./src/keypoint/Keypoint.js",
+    "./keypoint/context": "./src/keypoint/KeypointContext.js",
+    "./keypoint/storage": "./src/keypoint/KeypointStorage.js",
+    "./keypoint/validator": "./src/keypoint/KeypointValidator.js",
+    "./keypoint/scopes": "./src/keypoint/ScopeManager.js",
+    "./plugins": "./src/plugins/PluginManager.js",
+    "./plugins/audit": "./src/plugins/AuditLogger.js",
+    "./plugins/ratelimit": "./src/plugins/RateLimiter.js",
+    "./plugins/websocket": "./src/plugins/WebSocketGuard.js",
+    "./policy": "./src/policy/PolicyEngine.js",
+    "./policy/rules": "./src/policy/PolicyRule.js",
+    "./policy/decision": "./src/policy/AccessDecision.js",
+    "./router": "./src/router/MinimalRouter.js",
+    "./core": "./src/core/Context.js",
+    "./core/protocol": "./src/core/ProtocolEngine.js"
+  },
   "scripts": {
-    "start": "node examples/server.js",
-    "test": "node --test test/",
-    "test:basic": "node --test test/basic.test.js",
-    "test:integration": "node --test test/integration.test.js",
+    "test": "node --test test/*.test.js",
+    "test:coverage": "NODE_V8_COVERAGE=coverage node --test test/*.test.js",
     "test:performance": "node test/performance.test.js",
-    "dev": "node --watch examples/server.js",
-    "build": "npm test"
+    "start": "node examples/server.js",
+    "lint": "eslint src/ test/",
+    "lint:fix": "eslint src/ test/ --fix",
+    "prepare": "npm run lint",
+    "prepublishOnly": "npm test"
   },
   "keywords": [
-    "api",
-    "framework",
-    "security",
     "authentication",
+    "authorization",
+    "api",
+    "security",
+    "middleware",
     "keypoint",
-    "identity",
-    "gateway",
-    "zero-trust",
-    "api-security"
+    "nodejs",
+    "websocket",
+    "rate-limiting",
+    "audit-logging"
   ],
   "author": "AnasBex",
-  "license": "Apache-2.0 license",
+  "website": "https://anasbex.vercel.app",
+  "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/anasbex-dev/keypointjs"
+    "url": "git+https://github.com/anasbex-dev/keypointjs.git"
   },
   "bugs": {
     "url": "https://github.com/anasbex-dev/keypointjs/issues"
   },
   "homepage": "https://github.com/anasbex-dev/keypointjs#readme",
-  "dependencies": {
-    "ws": "^8.14.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.2"
-  },
   "engines": {
     "node": ">=18.0.0"
   },
   "files": [
     "src/",
+    "examples/",
     "README.md",
     "LICENSE"
-  ]
+  ],
+  "dependencies": {
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "autocannon": "^7.13.0",
+    "eslint": "^8.56.0"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.8",
+    "utf-8-validate": "^6.0.3"
+  }
 }
