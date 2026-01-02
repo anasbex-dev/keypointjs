@@ -1,0 +1,51 @@
+{
+  "name": "KeypointJS",
+  "version": "1.0.0",
+  "description": "Identity-first API framework with mandatory keypoint authentication",
+  "main": "src/KeypointJS.js",
+  "type": "module",
+  "scripts": {
+    "start": "node examples/server.js",
+    "test": "node --test test/",
+    "test:basic": "node --test test/basic.test.js",
+    "test:integration": "node --test test/integration.test.js",
+    "test:performance": "node test/performance.test.js",
+    "dev": "node --watch examples/server.js",
+    "build": "npm test"
+  },
+  "keywords": [
+    "api",
+    "framework",
+    "security",
+    "authentication",
+    "keypoint",
+    "identity",
+    "gateway",
+    "zero-trust",
+    "api-security"
+  ],
+  "author": "AnasBex",
+  "license": "Apache-2.0 license",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anasbex-dev/keypointjs"
+  },
+  "bugs": {
+    "url": "https://github.com/anasbex-dev/keypointjs/issues"
+  },
+  "homepage": "https://github.com/anasbex-dev/keypointjs#readme",
+  "dependencies": {
+    "ws": "^8.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "src/",
+    "README.md",
+    "LICENSE"
+  ]
+}
