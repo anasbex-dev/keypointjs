@@ -23,14 +23,14 @@ jobs:
           console.log('✅ Type:', pkg.type);
           
           if (!pkg.name || !pkg.version) {
-            console.error('❌ Invalid package.json');
+            console.error('Invalid package.json');
             process.exit(1);
           }
         "
     
     - name: Check exports
       run: |
-        echo "📦 Checking exports..."
+        echo "Checking exports..."
         node -e "
           const pkg = require('./package.json');
           const exports = pkg.exports || {};
@@ -38,11 +38,11 @@ jobs:
           
           for (const exp of requiredExports) {
             if (!exports[exp]) {
-              console.error(\`❌ Missing export: \${exp}\`);
+              console.error(\`Missing export: \${exp}\`);
               process.exit(1);
             }
           }
-          console.log('✅ All exports present');
+          console.log('All exports present');
         "
 
   test:
