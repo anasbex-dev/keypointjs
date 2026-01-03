@@ -5,7 +5,7 @@
   "main": "src/keypointJS.js",
   "type": "module",
   "exports": {
-    ".": "./src/KeypointJS.js",
+    ".": "./src/keypointJS.js",
     "./keypoint": "./src/keypoint/Keypoint.js",
     "./keypoint/context": "./src/keypoint/KeypointContext.js",
     "./keypoint/storage": "./src/keypoint/KeypointStorage.js",
@@ -65,10 +65,6 @@
   ],
   "dependencies": {
     "ws": "^8.14.2"
-  },
-  "devDependencies": {
-    "autocannon": "^7.13.0",
-    "eslint": "^8.56.0"
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8",

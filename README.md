@@ -193,7 +193,7 @@ responses
 Installation & Setup
 
 ```javascript
-import { KeypointJS } from './src/KeypointJS.js';
+import { KeypointJS } from './src/keypointJS.js';
 
 // Initialize the framework
 const api = new KeypointJS({
