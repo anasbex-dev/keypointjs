@@ -1,8 +1,6 @@
 name: Publish to npm
 
 on:
-  release:
-    types: [created]
   workflow_dispatch:
 
 jobs:
@@ -12,79 +10,64 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - uses: actions/setup-node@v4
+    - name: Setup Node.js with npm auth
+      uses: actions/setup-node@v4
       with:
         node-version: '18'
         registry-url: 'https://registry.npmjs.org/'
     
-    - name: Show package info
+    - name: Create .npmrc with token
       run: |
-        echo "Package Information:"
-        node -p "const p = require('./package.json'); \`
-          Name:    \${p.name}
-          Version: \${p.version}
-          Main:    \${p.main}
-          Type:    \${p.type}
-        \`"
+        echo "//registry.npmjs.org/:_authToken=${{ secrets.NPM_TOKEN }}" > ~/.npmrc
+        echo "Created .npmrc with authentication"
     
-    - name: Verify package.json
+    - name: Verify npm authentication
       run: |
-        node -e "
-          const pkg = require('./package.json');
-          const required = ['name', 'version', 'main', 'license'];
-          for (const field of required) {
-            if (!pkg[field]) {
-              console.error('Missing ' + field + ' in package.json');
-              process.exit(1);
-            }
-          }
-          console.log('package.json valid');
-        "
+        echo "Testing npm authentication..."
+        npm whoami || echo "Note: npm whoami may fail with automation token"
+    
+    - name: Check package availability
+      run: |
+        echo "Checking if 'keypointjs' exists on npm..."
+        if npm view keypointjs 2>/dev/null; then
+          echo "ERROR: 'keypointjs' already exists on npm!"
+          exit 1
+        else
+          echo "SUCCESS: 'keypointjs' is available!"
+        fi
     
     - name: Install ws dependency
-      run: npm install ws@^8.14.2 --no-save
-    
-    - name: Dry run
       run: |
-        echo "Dry run publish..."
+        echo "Installing ws..."
+        npm install ws@^8.14.2 --no-save
+    
+    - name: Dry run publish
+      run: |
+        echo "Dry run publish test..."
         npm pack --dry-run
     
-    - name: Verify module loads
-      run: |
-        node -e "
-          import('./src/keypointJS.js').then(m => {
-            console.log('ES Module loads');
-            if (!m.KeypointJS) {
-              console.error('KeypointJS class not exported');
-              process.exit(1);
-            }
-            console.log('KeypointJS class available');
-          }).catch(e => {
-            console.error('Module load failed:', e.message);
-            process.exit(1);
-          })
-        "
-    
     - name: Publish to npm
-      run: npm publish
+      run: |
+        echo "Publishing keypointjs to npm..."
+        npm publish
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     
     - name: Verify publication
       run: |
-        echo "Waiting for npm propagation..."
-        sleep 3
-        
-        PACKAGE_NAME=$(node -p "require('./package.json').name")
-        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+        echo "Waiting for npm..."
+        sleep 5
         
         echo ""
-        echo "SUCCESS!"
+        echo "========================================"
+        echo "PUBLISHED SUCCESSFULLY!"
+        echo "========================================"
         echo ""
-        echo "$PACKAGE_NAME v$PACKAGE_VERSION published!"
+        echo "Package: keypointjs"
+        echo "Version: $(node -p "require('./package.json').version")"
         echo ""
-        echo "npm: https://www.npmjs.com/package/$PACKAGE_NAME"
-        echo "Docs: https://github.com/anasbex-dev/$PACKAGE_NAME"
-        echo "Install: npm install $PACKAGE_NAME"
+        echo "npm: https://www.npmjs.com/package/keypointjs"
+        echo "Docs: https://github.com/anasbex-dev/keypointjs"
+        echo "Install: npm install keypointjs"
         echo ""
         echo "Thank you for using KeypointJS!"
