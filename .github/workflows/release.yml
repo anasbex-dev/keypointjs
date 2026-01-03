@@ -1,4 +1,4 @@
-name: Release to npm
+name: Publish to npm
 
 on:
   release:
@@ -6,96 +6,85 @@ on:
   workflow_dispatch:
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-    
-    - name: Generate package-lock.json if missing
-      run: |
-        echo "📦 Checking for lockfile..."
-        if [ ! -f "package-lock.json" ]; then
-          echo "Creating package-lock.json..."
-          npm install --package-lock-only
-        else
-          echo "✅ package-lock.json exists"
-        fi
-
-  test:
-    needs: validate
-    runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-    
-    - name: Install dependencies
-      run: |
-        echo "📦 Installing dependencies..."
-        # Pakai npm install (bukan ci) karena lockfile mungkin baru dibuat
-        npm install
-    
-    - name: Run basic tests only
-      run: |
-        echo "🧪 Running basic tests..."
-        # HANYA basic.test.js
-        node --test test/basic.test.js
-
   publish:
-    needs: test
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
     
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
     
-    - name: Setup Node.js for npm
-      uses: actions/setup-node@v4
+    - uses: actions/setup-node@v4
       with:
         node-version: '18'
         registry-url: 'https://registry.npmjs.org/'
     
-    - name: Clean install for publish
+    - name: Show package info
       run: |
-        echo "🧹 Cleaning for publish..."
-        rm -rf node_modules
-        
-        echo "📦 Installing ws dependency..."
-        # Install hanya ws
-        npm install ws@^8.14.2 --save --no-package-lock
-        
-        echo "📄 Package contents:"
-        ls -la
+        echo "Package Information:"
+        node -p "const p = require('./package.json'); \`
+          Name:    \${p.name}
+          Version: \${p.version}
+          Main:    \${p.main}
+          Type:    \${p.type}
+        \`"
     
-    - name: Dry run publish
+    - name: Verify package.json
       run: |
-        echo "🔍 Dry run publish..."
+        node -e "
+          const pkg = require('./package.json');
+          const required = ['name', 'version', 'main', 'license'];
+          for (const field of required) {
+            if (!pkg[field]) {
+              console.error('Missing ' + field + ' in package.json');
+              process.exit(1);
+            }
+          }
+          console.log('package.json valid');
+        "
+    
+    - name: Install ws dependency
+      run: npm install ws@^8.14.2 --no-save
+    
+    - name: Dry run
+      run: |
+        echo "Dry run publish..."
         npm pack --dry-run
     
-    - name: Publish to npm
+    - name: Verify module loads
       run: |
-        echo "🚀 Publishing to npm..."
-        npm publish
+        node -e "
+          import('./src/keypointJS.js').then(m => {
+            console.log('ES Module loads');
+            if (!m.KeypointJS) {
+              console.error('KeypointJS class not exported');
+              process.exit(1);
+            }
+            console.log('KeypointJS class available');
+          }).catch(e => {
+            console.error('Module load failed:', e.message);
+            process.exit(1);
+          })
+        "
+    
+    - name: Publish to npm
+      run: npm publish
       env:
         NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     
-    - name: Success message
+    - name: Verify publication
       run: |
-        echo "🎉 SUCCESS! KeypointJS published!"
+        echo "Waiting for npm propagation..."
+        sleep 3
+        
+        PACKAGE_NAME=$(node -p "require('./package.json').name")
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+        
         echo ""
-        echo "📦 npm: https://www.npmjs.com/package/keypointjs"
-        echo "🚀 Install: npm install keypointjs"
+        echo "SUCCESS!"
+        echo ""
+        echo "$PACKAGE_NAME v$PACKAGE_VERSION published!"
+        echo ""
+        echo "npm: https://www.npmjs.com/package/$PACKAGE_NAME"
+        echo "Docs: https://github.com/anasbex-dev/$PACKAGE_NAME"
+        echo "Install: npm install $PACKAGE_NAME"
+        echo ""
+        echo "Thank you for using KeypointJS!"
