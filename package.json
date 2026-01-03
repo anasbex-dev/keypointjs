@@ -1,6 +1,6 @@
 {
   "name": "keypointjs",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "KeypointJS Identity-First API Framework with Mandatory Authentication",
   "main": "src/keypointJS.js",
   "type": "module",
@@ -12,6 +12,7 @@
     "./keypoint/validator": "./src/keypoint/KeypointValidator.js",
     "./keypoint/scopes": "./src/keypoint/ScopeManager.js",
     "./plugins": "./src/plugins/PluginManager.js",
+    "./plugins/transformer": "./src/plugins/transformer/TransformerPlugin.js",
     "./plugins/audit": "./src/plugins/AuditLogger.js",
     "./plugins/ratelimit": "./src/plugins/RateLimiter.js",
     "./plugins/websocket": "./src/plugins/WebSocketGuard.js",

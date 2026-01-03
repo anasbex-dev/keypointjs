@@ -806,7 +806,10 @@ Apache-2.0 license - see the LICENSE file for details.
 - Contributions: PRs welcome for bug fixes and features
 - Questions: Open a discussion for usage questions
 
----
+## KeypointJS is Independent
+
+KeypointJS does not depend on Express, Fastify, or any third-party HTTP framework.
+It ships with its own HTTP server, routing system, middleware pipeline, and security layer.
 
 ## Created Base ♥️ KeypointJS
 ### AnasBex - (⁠づ⁠￣⁠ ⁠³⁠￣⁠)⁠づ 
