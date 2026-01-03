@@ -23,12 +23,12 @@
     "./core/protocol": "./src/core/ProtocolEngine.js"
   },
   "scripts": {
-    "test": "node --test test/*.test.js",
-    "test:coverage": "NODE_V8_COVERAGE=coverage node --test test/*.test.js",
+    "test": "node --test test/basic.test.js",
+    "test:all": "node --test test/*.test.js",
+    "test:integration": "node --test test/integration.test.js",
     "test:performance": "node test/performance.test.js",
+    "test:coverage": "NODE_V8_COVERAGE=coverage node --test test/basic.test.js",
     "start": "node examples/server.js",
-    "lint": "eslint src/ test/",
-    "lint:fix": "eslint src/ test/ --fix",
     "prepublishOnly": "npm test"
   },
   "keywords": [
@@ -59,7 +59,6 @@
   },
   "files": [
     "src/",
-    "examples/",
     "README.md",
     "LICENSE"
   ],
