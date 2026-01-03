@@ -6,8 +6,6 @@
 
 </div>
 
-Based on your complete codebase, here is the comprehensive documentation:
-
 <div align="center">
 <p align="center">
   <img alt="GitHub" src="https://img.shields.io/github/license/anasbex-dev/keypointjs?color=blue">
