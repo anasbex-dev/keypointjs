@@ -1,6 +1,6 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { KeypointJS } from '../src/KeypointJS.js';
+import { KeypointJS } from '../src/keypointJS.js';
 import { Keypoint } from '../src/keypoint/Keypoint.js';
 import http from 'node:http';
 

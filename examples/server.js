@@ -1,9 +1,9 @@
 console.log('KeypointJS Server - Starting...');
 console.log('==================================');
 
-// Import framework dengan error handling
+// Import framework with error handling
 try {
-  // Dynamic import untuk handle ES modules
+  // Dynamic import to handle ES modules
   const framework = await import('../src/keypointJS.js');
   const { KeypointJS, Keypoint } = framework;
   
@@ -11,8 +11,8 @@ try {
   
   // Create instance with SIMPLE config first
   const api = new KeypointJS({
-    requireKeypoint: false, // DISABLE untuk testing dulu
-    strictMode: false, // DISABLE untuk melihat error detail
+    requireKeypoint: false, // DISABLE for testing first
+    strictMode: false, // DISABLE to see error details
     enableCORS: true,
     corsOrigins: ['*'],
     maxRequestSize: '10mb'
@@ -140,7 +140,7 @@ try {
     
     // Graceful shutdown
     process.on('SIGINT', async () => {
-      console.log('\n👋 Shutting down KeypointJS...');
+      console.log('\n Shutting down KeypointJS...');
       try {
         await api.shutdown();
         console.log('KeypointJS shutdown complete');
