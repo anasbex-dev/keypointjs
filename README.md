@@ -23,7 +23,6 @@ Based on your complete codebase, here is the comprehensive documentation:
 </div>
 
 
-
 # Project Overview
 
 KeypointJS is a sophisticated, layered authentication and authorization framework for Node.js with built-in security features, plugin architecture, and real-time capabilities.
@@ -51,7 +50,6 @@ Layered Middleware System
 │ Layer 7: Response Processing    │
 └─────────────────────────────────┘
 ```
-
 # File Structure & Responsibilities
 
 ## Core Components (core/)
@@ -191,6 +189,16 @@ responses
 # Quick Start
 
 Installation & Setup
+
+``` bash
+
+npm install keypointjs
+# or
+yarn add keypointjs
+# or
+pnpm add keypointjs
+
+```
 
 ```javascript
 import { KeypointJS } from './src/keypointJS.js';
