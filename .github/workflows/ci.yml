@@ -90,7 +90,7 @@ jobs:
     
     - name: Install production only
       run: |
-        echo "📦 Installing production dependencies..."
+        echo "Installing production dependencies..."
         # Clean install hanya production deps
         rm -rf node_modules
         npm install ws@^8.14.2 --save --no-package-lock
@@ -101,9 +101,9 @@ jobs:
         node -e "
           try {
             const { KeypointJS } = require('./srckKeypointJS.js');
-            console.log('✅ KeypointJS loads successfully');
+            console.log('KeypointJS loads successfully');
           } catch (e) {
-            console.error('❌ Failed to load KeypointJS:', e.message);
+            console.error('Failed to load KeypointJS:', e.message);
             process.exit(1);
           }
         "
