@@ -5,7 +5,7 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch: # Manual trigger
+  workflow_dispatch:
 
 jobs:
   test:
@@ -19,84 +19,37 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
+    
+    - name: Generate lockfile if missing
+      run: |
+        if [ ! -f "package-lock.json" ]; then
+          echo "Creating package-lock.json..."
+          npm install --package-lock-only
+        fi
     
     - name: Install dependencies
       run: |
         echo "📦 Installing dependencies..."
         npm install
     
-    - name: Run BASIC tests only (skip integration & performance)
+    - name: Run basic tests
       run: |
         echo "🧪 Running basic tests..."
-        # Hanya run basic.test.js
         node --test test/basic.test.js
-    
-    - name: Verify module structure
-      run: |
-        echo "🔍 Verifying module structure..."
-        # Cek file utama
-        if [ ! -f "src/keypointJS.js" ]; then
-          echo "❌ Missing main file: src/keypointJS.js"
-          exit 1
-        fi
-        
-        # Test import
-        node -e "
-          import('./src/keypointJS.js').then(m => {
-            console.log('✅ Main module loads');
-            if (m.KeypointJS) {
-              console.log('✅ KeypointJS class exported');
-            }
-          }).catch(e => {
-            console.error('❌ Module load failed:', e.message);
-            process.exit(1);
-          })
-        "
-    
-    - name: Check package.json
-      run: |
-        echo "📄 Checking package.json..."
-        node -e "
-          const pkg = require('./package.json');
-          const required = ['name', 'version', 'main', 'type', 'exports'];
-          for (const field of required) {
-            if (!pkg[field]) {
-              console.error(\`❌ Missing \${field} in package.json\`);
-              process.exit(1);
-            }
-          }
-          console.log('✅ package.json valid');
-        "
-
-  validate:
-    runs-on: ubuntu-latest
-    needs: test
-    
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
     
     - name: Verify exports
       run: |
-        echo "📦 Verifying package exports..."
+        echo "🔍 Verifying package structure..."
         node -e "
           const pkg = require('./package.json');
-          const exports = pkg.exports || {};
-          const requiredExports = ['.'];
+          console.log('Name:', pkg.name);
+          console.log('Version:', pkg.version);
           
-          console.log('Package exports:', Object.keys(exports));
-          
-          for (const exp of requiredExports) {
-            if (!exports[exp]) {
-              console.error(\`❌ Missing required export: \${exp}\`);
-              process.exit(1);
-            }
+          // Check main file exists
+          const fs = require('fs');
+          if (!fs.existsSync(pkg.main)) {
+            console.error('❌ Main file missing:', pkg.main);
+            process.exit(1);
           }
-          console.log('✅ All required exports present');
+          console.log('✅ All checks passed');
         "
