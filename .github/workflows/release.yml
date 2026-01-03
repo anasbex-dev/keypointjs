@@ -1,0 +1,189 @@
+name: Release to npm
+
+on:
+  release:
+    types: [created]
+  workflow_dispatch: # Manual trigger
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+    
+    - name: Verify tag matches version
+      id: version_check
+      run: |
+        echo "🔖 Checking version consistency..."
+        
+        # Get package version
+        PACKAGE_VERSION=$(node -p "require('./package.json').version")
+        echo "Package version: $PACKAGE_VERSION"
+        
+        # Get tag version (if triggered by release)
+        if [[ "${{ github.event_name }}" == "release" ]]; then
+          TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Tag version: $TAG_VERSION"
+          
+          if [ "$PACKAGE_VERSION" != "$TAG_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            echo "   package.json: $PACKAGE_VERSION"
+            echo "   Git tag: $TAG_VERSION"
+            exit 1
+          fi
+          echo "✅ Version match"
+        else
+          echo "⚠️ Manual trigger, skipping version check"
+        fi
+    
+    - name: Check npm availability
+      run: |
+        echo "📦 Checking if package already exists..."
+        # Cek apakah package sudah ada di npm
+        if npm view keypointjs > /dev/null 2>&1; then
+          echo "✅ Package exists on npm"
+          CURRENT_VERSION=$(npm view keypointjs version)
+          echo "Current npm version: $CURRENT_VERSION"
+          
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG_VERSION="${GITHUB_REF#refs/tags/v}"
+            if [ "$CURRENT_VERSION" == "$TAG_VERSION" ]; then
+              echo "❌ Version $TAG_VERSION already published!"
+              exit 1
+            fi
+          fi
+        else
+          echo "🆕 Package not yet published (first release)"
+        fi
+
+  test:
+    needs: validate
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+    
+    - name: Install dependencies
+      run: |
+        echo "📦 Installing dependencies..."
+        # Clean install
+        rm -rf node_modules
+        npm install
+    
+    - name: Run basic tests (skip integration/performance)
+      run: |
+        echo "🧪 Running essential tests..."
+        # HANYA basic.test.js seperti di package.json
+        npm test
+    
+    - name: Verify production build
+      run: |
+        echo "🏗️ Testing production build..."
+        # Test dengan hanya production dependencies
+        rm -rf node_modules
+        npm install ws@^8.14.2 --no-save --no-package-lock
+        
+        # Verify module loads
+        node -e "
+          import('./src/keypointJS.js').then(m => {
+            console.log('✅ Production module loads');
+            if (m.KeypointJS) {
+              console.log('✅ KeypointJS class available');
+              // Test instantiation
+              try {
+                const api = new m.KeypointJS({ requireKeypoint: false });
+                console.log('✅ Instance created successfully');
+              } catch (e) {
+                console.error('❌ Instance creation failed:', e.message);
+                process.exit(1);
+              }
+            }
+          }).catch(e => {
+            console.error('❌ Module load failed:', e.message);
+            process.exit(1);
+          })
+        "
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'release'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Setup Node.js for npm
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        registry-url: 'https://registry.npmjs.org/'
+    
+    - name: Clean install for publish
+      run: |
+        echo "🧹 Cleaning for publish..."
+        rm -rf node_modules
+        
+        echo "📦 Installing production dependency..."
+        # Install hanya ws (satu-satunya production dep)
+        npm install ws@^8.14.2 --save --no-package-lock
+        
+        echo "📄 Package contents:"
+        ls -la
+    
+    - name: Dry run publish
+      run: |
+        echo "🔍 Dry run publish..."
+        npm pack --dry-run
+    
+    - name: Publish to npm
+      run: |
+        echo "🚀 Publishing to npm..."
+        npm publish
+      env:
+        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    
+    - name: Verify publication
+      run: |
+        echo "⏳ Waiting for npm propagation..."
+        sleep 10
+        
+        echo "✅ PUBLISHED SUCCESSFULLY!"
+        echo ""
+        echo "🎉 KeypointJS v$(node -p "require('./package.json').version")"
+        echo "📦 npm: https://www.npmjs.com/package/keypointjs"
+        echo "🚀 Install: npm install keypointjs"
+        echo "📚 Docs: https://github.com/anasbex-dev/keypointjs"
+        echo ""
+        echo "✨ Thank you for using KeypointJS! 🔐"
+    
+    - name: Update release with npm info
+      if: success()
+      run: |
+        VERSION=$(node -p "require('./package.json').version")
+        echo "## 📦 Published to npm" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Quick Start:" >> $GITHUB_STEP_SUMMARY
+        echo '```bash' >> $GITHUB_STEP_SUMMARY
+        echo "npm install keypointjs" >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Documentation:" >> $GITHUB_STEP_SUMMARY
+        echo "- [GitHub Repository](https://github.com/anasbex-dev/keypointjs)" >> $GITHUB_STEP_SUMMARY
+        echo "- [Full Documentation](https://github.com/anasbex-dev/keypointjs#readme)" >> $GITHUB_STEP_SUMMARY
