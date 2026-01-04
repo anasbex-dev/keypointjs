@@ -10,7 +10,7 @@
 <p align="center">
   <img alt="GitHub" src="https://img.shields.io/github/license/anasbex-dev/keypointjs?color=blue">
   <img alt="npm" src="https://img.shields.io/npm/v/keypointjs">
-  <img alt="npmcharts" src"https://img.shields.io/npm/dt/keypointjs?style=flat-square">
+  <img alt="npmcharts" src"https://img.shields.io/npm/d18m/keypointjs.svg?style=flat-square">
   <img alt="Node.js" src="https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Ready-blue">
   <img alt="Tests" src="https://img.shields.io/badge/tests-100%25%20passing-brightgreen">
