@@ -99,7 +99,7 @@ try {
       headers: { 'Content-Type': 'application/json' },
       body: {
         service: 'KeypointJS',
-        version: '1.0.0',
+        version: '1.1.1',
         status: 'running',
         timestamp: new Date().toISOString(),
         endpoints: [

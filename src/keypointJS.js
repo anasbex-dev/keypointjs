@@ -1,10 +1,8 @@
-// Import http module once at top level
-let http;
-try {
-  http = await import('http');
-} catch (error) {
-  console.error('Failed to import http module:', error);
-}
+/*
+ KeypointJS Main Module © 2026
+ __________________________________________
+  
+*/
 
 import { Context } from './core/Context.js';
 import { ProtocolEngine, ProtocolError } from './core/ProtocolEngine.js';
@@ -20,6 +18,7 @@ import { PluginManager, BuiltInHooks } from './plugins/PluginManager.js';
 import { RateLimiter } from './plugins/RateLimiter.js';
 import { AuditLogger } from './plugins/AuditLogger.js';
 import { WebSocketGuard } from './plugins/WebSocketGuard.js';
+import { AccessDecision } from './policy/AccessDecision.js';
 
 export class KeypointJS {
   constructor(options = {}) {
@@ -36,6 +35,7 @@ export class KeypointJS {
         'X-Content-Type-Options': 'nosniff'
       },
       errorHandler: this.defaultErrorHandler.bind(this),
+      trustedProxies: [], // TAMBAH: untuk ProtocolEngine
       ...options
     };
     
@@ -47,6 +47,9 @@ export class KeypointJS {
     
     // Setup built-in policies
     this.setupBuiltInPolicies();
+    
+    // Setup built-in plugins
+    this.setupBuiltInPlugins(); // TAMBAH METHOD BARU
     
     // Event emitter
     this.events = new Map();
@@ -60,6 +63,38 @@ export class KeypointJS {
       policyChecks: 0,
       startTime: new Date()
     };
+  }
+  
+ getProtocolEngine() {
+  return this.protocolEngine;
+ }
+
+ configureProtocolEngine(options) {
+  this.protocolEngine = new ProtocolEngine({
+    ...this.protocolEngine.options,
+    ...options
+  });
+  return this;
+ }
+  
+  setupBuiltInPlugins() {
+    // Register built-in plugins jika di-enable via options
+    if (this.options.enableAuditLog !== false) {
+      const auditLogger = new AuditLogger({
+        logToConsole: this.options.auditToConsole !== false,
+        logToFile: this.options.auditToFile || false,
+        filePath: this.options.auditFilePath || './audit.log'
+      });
+      this.registerPlugin(auditLogger);
+    }
+    
+    if (this.options.enableRateLimiter !== false) {
+      const rateLimiter = new RateLimiter({
+        window: this.options.rateLimitWindow || 60000,
+        max: this.options.rateLimitMax || 100
+      });
+      this.registerPlugin(rateLimiter);
+    }
   }
   
   initializeCore() {
@@ -101,25 +136,45 @@ export class KeypointJS {
 // Layer 1: Protocol Engine
 this.use(async (ctx, next) => {
   try {
-    const processed = await this.protocolEngine.process(ctx.request);
-    
-    ctx.id = processed.id;
-    ctx.timestamp = processed.timestamp;
-    ctx.metadata = processed.metadata;
-    
-    // Update request object
-    if (processed.request) {
-      ctx.request = {
-        ...ctx.request,
-        ...processed.request
-      };
+    // Make sure ctx.request is a native Node.js Request object.
+    if (!ctx.request || typeof ctx.request !== 'object') {
+      throw new ProtocolError('Invalid request object', 400);
     }
     
+    const processed = await this.protocolEngine.process(ctx.request);
+    
+    // Update context dengan data processed
+    Object.assign(ctx, {
+      id: processed.id,
+      timestamp: processed.timestamp,
+      metadata: {
+        ...ctx.metadata,
+        ...processed.metadata
+      }
+    });
+    
+    // Update request object - pertahankan original request
+    ctx.request = {
+      ...ctx.request,
+      ...processed.request,
+      originalRequest: ctx.request // Save reference to original
+    };
+    
+    // Set protocol and IP
     ctx.setState('_protocol', processed.protocol);
-    ctx.setState('_ip', processed.request?.ip);
+    ctx.setState('_ip', processed.request?.ip || '0.0.0.0');
+    
+    // Set protocol and ip properties in context
+    if (!ctx._protocol) {
+      ctx._protocol = processed.protocol;
+    }
     
   } catch (error) {
-    throw new KeypointError(`Protocol error: ${error.message}`, 400);
+    // Use ProtocolError if available, otherwise KeypointError
+    if (error.name === 'ProtocolError') {
+      throw error;
+    }
+    throw new ProtocolError(`Protocol processing error: ${error.message}`, 400);
   }
   return next(ctx);
 });
@@ -410,32 +465,42 @@ this.use(async (ctx, next) => {
   // Request handling
   
   async handleRequest(request, response) {
-    const ctx = new KeypointContext(request);
-    this.stats.requests++;
+  const ctx = new KeypointContext(request);
+  this.stats.requests++;
+  
+  try {
+    // Run the middleware chain
+    await this.runMiddlewareChain(ctx);
+    this.stats.successful++;
     
-    try {
-      await this.runMiddlewareChain(ctx);
-      this.stats.successful++;
-      
-      this.emit('request:success', {
-        ctx,
-        timestamp: new Date(),
-        duration: ctx.response?.duration || 0
-      });
-      
-      return ctx.response;
-    } catch (error) {
-      this.stats.failed++;
-      
-      this.emit('request:error', {
-        ctx,
-        error,
-        timestamp: new Date()
-      });
-      
-      return this.options.errorHandler(error, ctx, response);
-    }
+    // Emit success event
+    this.emit('request:success', {
+      ctx,
+      timestamp: new Date(),
+      duration: ctx.response?.duration || 0
+    });
+    
+    // Return response
+    return ctx.response || {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' },
+      body: { error: 'Not Found', code: 404 }
+    };
+    
+  } catch (error) {
+    this.stats.failed++;
+    
+    // Emit error event
+    this.emit('request:error', {
+      ctx,
+      error,
+      timestamp: new Date()
+    });
+    
+    // Handle error via error handler
+    return this.options.errorHandler(error, ctx, response);
   }
+}
   
   async runMiddlewareChain(ctx, index = 0) {
     if (index >= this.middlewareChain.length) return;
@@ -446,146 +511,167 @@ this.use(async (ctx, next) => {
     return await middleware(ctx, next);
   }
   
-// HTTP Server integration
+// HTTP Server integration - SINGLE VERSION
 createServer() {
-  if (!http) {
-    throw new Error('HTTP module not available');
-  }
-  
-  const server = http.createServer(async (req, res) => {
-    const response = await this.handleRequest(req, res);
-    
-    res.statusCode = response.status || 200;
-    Object.entries(response.headers || {}).forEach(([key, value]) => {
-      res.setHeader(key, value);
-    });
-    
-    if (response.body !== undefined) {
-      const body = typeof response.body === 'string' ?
-        response.body :
-        JSON.stringify(response.body);
-      res.end(body);
-    } else {
-      res.end();
+  return new Promise(async (resolve, reject) => {
+    try {
+      // Dynamic import http module
+      const http = await import('http');
+      
+      const server = http.createServer(async (req, res) => {
+        try {
+          const response = await this.handleRequest(req, res);
+          
+          // Set response
+          res.statusCode = response.status || 200;
+          
+          // Set headers
+          if (response.headers) {
+            Object.entries(response.headers).forEach(([key, value]) => {
+              if (value !== undefined && value !== null) {
+                res.setHeader(key, value);
+              }
+            });
+          }
+          
+          // Send body
+          if (response.body !== undefined && response.body !== null) {
+            const body = typeof response.body === 'string' ?
+              response.body :
+              JSON.stringify(response.body);
+            res.end(body);
+          } else {
+            res.end();
+          }
+          
+        } catch (error) {
+          console.error('Server error:', error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({
+            error: 'Internal Server Error',
+            timestamp: new Date().toISOString()
+          }));
+        }
+      });
+      
+      // Setup WebSocket jika ada
+      if (this.wsGuard) {
+        this.wsGuard.attachToServer(server, this);
+      }
+      
+      resolve(server);
+      
+    } catch (error) {
+      reject(new Error(`Failed to create server: ${error.message}`));
     }
   });
-  
-  if (this.wsGuard) {
-    this.wsGuard.attachToServer(server, this);
-  }
-  
-  return server;
 }
 
+// SINGLE listen method
 listen(port, hostname = '0.0.0.0', callback) {
-  const server = this.createServer();
-  
-  server.listen(port, hostname, () => {
-    const address = server.address();
-    console.log(`
- KeypointJS Server Started
-════════════════════════════════════════
- Address: ${hostname}:${port}
- Mode: ${this.options.requireKeypoint ? 'Strict (Keypoint Required)' : 'Permissive'}
- Protocols: HTTP/HTTPS${this.wsGuard ? ' + WebSocket' : ''}
- Plugins: ${this.pluginManager.getPluginNames().length} loaded
- Keypoints: ${this.keypointStorage.store.size} registered
-════════════════════════════════════════
-    `);
-    
-    if (callback) callback(server);
+  return new Promise(async (resolve, reject) => {
+    try {
+      const server = await this.createServer();
+      
+      server.listen(port, hostname, () => {
+        const address = server.address();
+        const actualHost = address.address;
+        const actualPort = address.port;
+        
+        console.log(`
+╔═══════════════════════════════════════════════╗
+║            KeypointJS Server Started          ║
+╠═══════════════════════════════════════════════╣
+║ Address:   ${actualHost}:${actualPort}${' '.repeat(20 - (actualHost.length + actualPort.toString().length))}║
+║ Mode:      ${this.options.requireKeypoint ? 'Strict' : 'Permissive'}${' '.repeat(25 - (this.options.requireKeypoint ? 6 : 9))}║
+║ Protocols: HTTP/HTTPS${this.wsGuard ? ' + WebSocket' : ''}${' '.repeat(25 - (this.wsGuard ? 21 : 10))}║
+║ Plugins:   ${this.pluginManager.getPluginNames().length} loaded${' '.repeat(20 - this.pluginManager.getPluginNames().length.toString().length)}║
+║ Keypoints: ${this.keypointStorage.store.size} registered${' '.repeat(20 - this.keypointStorage.store.size.toString().length)}║
+╚═══════════════════════════════════════════════╝
+        `);
+        
+        // Emit event
+        this.emit('server:started', {
+          host: actualHost,
+          port: actualPort,
+          timestamp: new Date()
+        });
+        
+        if (callback) callback(server);
+        resolve(server);
+      });
+      
+      server.on('error', (error) => {
+        this.emit('server:error', { error, timestamp: new Date() });
+        reject(error);
+      });
+      
+      // Handle graceful shutdown
+      process.on('SIGTERM', () => this.shutdown());
+      process.on('SIGINT', () => this.shutdown());
+      
+    } catch (error) {
+      reject(error);
+    }
   });
-  
-  return server;
 }
 
-async listen(port, hostname = '0.0.0.0', callback) {
-  const server = await this.createServer();
-  
-  server.listen(port, hostname, () => {
-    const address = server.address();
-    console.log(`
- KeypointJS Server Started
-════════════════════════════════════════
- Address: ${hostname}:${port}
- Mode: ${this.options.requireKeypoint ? 'Strict (Keypoint Required)' : 'Permissive'}
- Protocols: HTTP/HTTPS${this.wsGuard ? ' + WebSocket' : ''}
- Plugins: ${this.pluginManager.getPluginNames().length} loaded
- Keypoints: ${this.keypointStorage.store.size} registered
-════════════════════════════════════════
-    `);
-    
-    if (callback) callback(server);
-  });
-  
-  return server;
-}
-  
-  listen(port, hostname = '0.0.0.0', callback) {
-    const server = this.createServer();
-    
-    server.listen(port, hostname, () => {
-      const address = server.address();
-      console.log(`
- KeypointJS Server Started
-════════════════════════════════════════
- Address: ${hostname}:${port}
- Mode: ${this.options.requireKeypoint ? 'Strict (Keypoint Required)' : 'Permissive'}
- Protocols: HTTP/HTTPS${this.wsGuard ? ' + WebSocket' : ''}
- Plugins: ${this.pluginManager.getPluginNames().length} loaded
- Keypoints: ${this.keypointStorage.store.size} registered
-════════════════════════════════════════
-      `);
-      
-      if (callback) callback(server);
-    });
-    
-    return server;
-  }
   
   // Error handling
-  
   defaultErrorHandler(error, ctx, response) {
-    const status = error.code || 500;
-    const message = error.message || 'Internal Server Error';
-    
-    if (this.options.strictMode) {
-      // Hide internal error details in production
-      const safeMessage = status >= 500 && process.env.NODE_ENV === 'production'
-        ? 'Internal Server Error'
-        : message;
-      
-      return {
-        status,
-        headers: {
-          'Content-Type': 'application/json',
-          ...this.options.defaultResponseHeaders
-        },
-        body: {
-          error: safeMessage,
-          code: status,
-          timestamp: new Date().toISOString(),
-          requestId: ctx?.id
-        }
-      };
-    }
-    
-    return {
-      status,
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.options.defaultResponseHeaders
-      },
-      body: {
-        error: message,
-        code: status,
-        timestamp: new Date().toISOString(),
-        requestId: ctx?.id,
-        details: error.details || {},
-        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
-      }
-    };
+  // Determine status code
+  let status = error.code || 500;
+  let message = error.message || 'Internal Server Error';
+  let exposeDetails = false;
+  
+  // Classify errors
+  if (error.name === 'ProtocolError' || error.name === 'KeypointError' ||
+    error.name === 'PolicyError' || error.name === 'ValidationError') {
+    exposeDetails = this.options.strictMode ? false : true;
+  } else if (status < 500) {
+    exposeDetails = true; // 4xx errors
   }
+  
+  // Prepare response
+  const errorResponse = {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...this.options.defaultResponseHeaders
+    },
+    body: {
+      error: exposeDetails ? message : (status >= 500 ? 'Internal Server Error' : message),
+      code: status,
+      timestamp: new Date().toISOString(),
+      requestId: ctx?.id
+    }
+  };
+  
+  // Add details if allowed
+  if (exposeDetails) {
+    if (error.details) errorResponse.body.details = error.details;
+    if (error.decision) errorResponse.body.decision = error.decision;
+    if (error.errors) errorResponse.body.errors = error.errors;
+    
+    // Stack trace in development
+    if (process.env.NODE_ENV === 'development' && error.stack) {
+      errorResponse.body.stack = error.stack.split('\n').slice(0, 5).join('\n');
+    }
+  }
+  
+  // Log error
+  if (status >= 500) {
+    console.error(`Server Error [${status}]:`, {
+      message: error.message,
+      stack: error.stack,
+      requestId: ctx?.id,
+      path: ctx?.path
+    });
+  }
+  
+  return errorResponse;
+}
   
   // Event system
   

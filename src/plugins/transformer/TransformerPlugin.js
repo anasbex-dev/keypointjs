@@ -25,10 +25,10 @@ export class TransformerPlugin {
 
     const response = await next(ctx);
 
-    // Jika handler return null / undefined
+    // If handler returns null / undefined
     if (!response) return response;
 
-    // Jika response bukan object API KeypointJS
+    // If the response is not a KeypointJS API object
     if (typeof response !== 'object' || !response.body) {
       return response;
     }
