@@ -1,6 +1,7 @@
 /*
- KeypointJS Main Module © 2026
+ KeypointJS Main Module © 2026 - By AnasBex
  __________________________________________
+ Do not make changes to the core of this file, unless you understand all of its code structure and paths.
   
 */
 
@@ -22,22 +23,28 @@ import { AccessDecision } from './policy/AccessDecision.js';
 
 export class KeypointJS {
   constructor(options = {}) {
-    this.options = {
-      requireKeypoint: true,
-      strictMode: true,
-      validateOrigin: true,
-      validateProtocol: true,
-      enableCORS: false,
-      corsOrigins: ['*'],
-      maxRequestSize: '10mb',
-      defaultResponseHeaders: {
-        'X-Powered-By': 'KeypointJS',
-        'X-Content-Type-Options': 'nosniff'
-      },
-      errorHandler: this.defaultErrorHandler.bind(this),
-      trustedProxies: [], // TAMBAH: untuk ProtocolEngine
-      ...options
-    };
+      this.options = {
+        requireKeypoint: true,
+        strictMode: true,
+        validateOrigin: true,
+        validateProtocol: true,
+        enableCORS: false,
+        corsOrigins: ['*'],
+        maxRequestSize: '10mb',
+        defaultResponseHeaders: {
+          'X-Powered-By': 'KeypointJS',
+          'X-Content-Type-Options': 'nosniff'
+        },
+        errorHandler: this.defaultErrorHandler.bind(this),
+        trustedProxies: [],
+        // NEW OPTIONS FOR MULTI-PROTOCOL:
+        enableWebSocket: true, // Enable WebSocket support
+        enableGrpc: false, // Enable gRPC support
+        enableHttp2: true, // Enable HTTP/2
+        enableHttp3: false, // Enable HTTP/3
+        protocolEngines: {}, // Custom protocol engines
+        ...options
+      };
     
     // Initialize core components
     this.initializeCore();
@@ -98,12 +105,17 @@ export class KeypointJS {
   }
   
   initializeCore() {
-    // Core protocol engine
-    this.protocolEngine = new ProtocolEngine({
-      maxBodySize: this.options.maxRequestSize,
-      parseJSON: true,
-      parseForm: true
-    });
+  // Core protocol engine with multi-protocol support
+  this.protocolEngine = new ProtocolEngine({
+    maxBodySize: this.options.maxRequestSize,
+    parseJSON: true,
+    parseForm: true,
+    validateProtocol: this.options.validateProtocol,
+    trustedProxies: this.options.trustedProxies,
+    enableWebSocket: this.options.enableWebSocket,
+    enableGrpc: this.options.enableGrpc,
+    protocolEngines: this.options.protocolEngines
+  });
     
     // Keypoint system
     this.keypointStorage = this.options.keypointStorage || new MemoryKeypointStorage();
@@ -126,6 +138,107 @@ export class KeypointJS {
     this.wsGuard = null;
   }
   
+  // NEW METHOD: Create multi-protocol server
+createMultiProtocolServer() {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const servers = {};
+      const http = await import('http');
+      const https = await import('https');
+      
+      // Create HTTP server
+      servers.http = http.createServer(async (req, res) => {
+        await this.handleHttpRequest(req, res);
+      });
+      
+      // Create HTTPS server if certs provided
+      if (this.options.https) {
+        servers.https = https.createServer(
+          this.options.https,
+          async (req, res) => {
+            await this.handleHttpRequest(req, res);
+          }
+        );
+      }
+      
+      // Setup WebSocket support
+      if (this.wsGuard && this.options.enableWebSocket) {
+        this.wsGuard.attachToServer(servers.http, this);
+        if (servers.https) {
+          this.wsGuard.attachToServer(servers.https, this);
+        }
+      }
+      
+      // Setup gRPC server if enabled
+      if (this.options.enableGrpc) {
+        servers.grpc = await this.createGrpcServer();
+      }
+      
+      resolve(servers);
+      
+    } catch (error) {
+      reject(new Error(`Failed to create servers: ${error.message}`));
+    }
+  });
+}
+
+// NEW METHOD: Handle HTTP requests (supports HTTP/HTTPS)
+async handleHttpRequest(req, res) {
+  try {
+    const response = await this.handleRequest(req, res);
+    
+    res.statusCode = response.status || 200;
+    
+    // Set headers
+    if (response.headers) {
+      Object.entries(response.headers).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          res.setHeader(key, value);
+        }
+      });
+    }
+    
+    // Send body
+    if (response.body !== undefined && response.body !== null) {
+      const body = typeof response.body === 'string' 
+        ? response.body 
+        : JSON.stringify(response.body);
+      res.end(body);
+    } else {
+      res.end();
+    }
+    
+  } catch (error) {
+    console.error('HTTP request error:', error);
+    res.statusCode = 500;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({
+      error: 'Internal Server Error',
+      timestamp: new Date().toISOString()
+    }));
+  }
+}
+
+// NEW METHOD: Create gRPC server
+async createGrpcServer() {
+  try {
+    // Note: In production, use @grpc/grpc-js
+    console.log('gRPC server support requires additional setup');
+    console.log('Install: npm install @grpc/grpc-js @grpc/proto-loader');
+    
+    return {
+      start: (port) => {
+        console.log(`gRPC server would start on port ${port}`);
+        console.log('See docs for gRPC implementation');
+      },
+      stop: () => console.log('gRPC server stopped')
+    };
+  } catch (error) {
+    console.warn('gRPC support not available:', error.message);
+    return null;
+  }
+}
+  
   initializeLayers() {
     // Layer 0: Pre-processing (hooks)
     this.use(async (ctx, next) => {
@@ -134,43 +247,58 @@ export class KeypointJS {
     });
     
 // Layer 1: Protocol Engine
+// Protocol Engine (UPDATED for multi-protocol)
 this.use(async (ctx, next) => {
   try {
-    // Make sure ctx.request is a native Node.js Request object.
     if (!ctx.request || typeof ctx.request !== 'object') {
       throw new ProtocolError('Invalid request object', 400);
     }
     
     const processed = await this.protocolEngine.process(ctx.request);
     
-    // Update context dengan data processed
+    // Store original protocol before context updates
+    const originalProtocol = processed.protocol;
+    
+    // Update context
     Object.assign(ctx, {
       id: processed.id,
       timestamp: processed.timestamp,
       metadata: {
         ...ctx.metadata,
-        ...processed.metadata
+        ...processed.metadata,
+        protocolEngine: processed.metadata.engine,
+        protocolVersion: processed.metadata.protocolVersion
       }
     });
     
-    // Update request object - pertahankan original request
+    // Preserve original request and add processed data
     ctx.request = {
       ...ctx.request,
       ...processed.request,
-      originalRequest: ctx.request // Save reference to original
+      originalRequest: ctx.request
     };
     
-    // Set protocol and IP
-    ctx.setState('_protocol', processed.protocol);
+    // Set protocol-specific properties
+    ctx.setState('_protocol', originalProtocol);
     ctx.setState('_ip', processed.request?.ip || '0.0.0.0');
+    ctx._protocol = originalProtocol;
     
-    // Set protocol and ip properties in context
-    if (!ctx._protocol) {
-      ctx._protocol = processed.protocol;
+    // Add protocol-specific helpers based on detected protocol
+    if (originalProtocol.startsWith('ws')) {
+      ctx.isWebSocket = true;
+      ctx.webSocket = {
+        key: processed.request?.key,
+        version: processed.request?.version
+      };
+    } else if (originalProtocol.startsWith('grpc')) {
+      ctx.isGrpc = true;
+      ctx.grpc = {
+        service: processed.request?.service,
+        method: processed.request?.method
+      };
     }
     
   } catch (error) {
-    // Use ProtocolError if available, otherwise KeypointError
     if (error.name === 'ProtocolError') {
       throw error;
     }
@@ -469,18 +597,20 @@ this.use(async (ctx, next) => {
   this.stats.requests++;
   
   try {
-    // Run the middleware chain
     await this.runMiddlewareChain(ctx);
     this.stats.successful++;
     
-    // Emit success event
+    // Track protocol usage
+    const protocol = ctx.protocol || 'unknown';
+    if (!this.stats.protocols) this.stats.protocols = {};
+    this.stats.protocols[protocol] = (this.stats.protocols[protocol] || 0) + 1;
+    
     this.emit('request:success', {
       ctx,
       timestamp: new Date(),
       duration: ctx.response?.duration || 0
     });
     
-    // Return response
     return ctx.response || {
       status: 404,
       headers: { 'Content-Type': 'application/json' },
@@ -490,14 +620,12 @@ this.use(async (ctx, next) => {
   } catch (error) {
     this.stats.failed++;
     
-    // Emit error event
     this.emit('request:error', {
       ctx,
       error,
       timestamp: new Date()
     });
     
-    // Handle error via error handler
     return this.options.errorHandler(error, ctx, response);
   }
 }
@@ -568,53 +696,136 @@ createServer() {
   });
 }
 
-// SINGLE listen method
+// listen method with multi-protocol support
 listen(port, hostname = '0.0.0.0', callback) {
   return new Promise(async (resolve, reject) => {
     try {
-      const server = await this.createServer();
+      const servers = await this.createMultiProtocolServer();
       
-      server.listen(port, hostname, () => {
-        const address = server.address();
-        const actualHost = address.address;
-        const actualPort = address.port;
+      // Start HTTP server
+      servers.http.listen(port, hostname, () => {
+        const address = servers.http.address();
+        this.logServerStart(address, servers);
         
-        console.log(`
-╔═══════════════════════════════════════════════╗
-║            KeypointJS Server Started          ║
-╠═══════════════════════════════════════════════╣
-║ Address:   ${actualHost}:${actualPort}${' '.repeat(20 - (actualHost.length + actualPort.toString().length))}║
-║ Mode:      ${this.options.requireKeypoint ? 'Strict' : 'Permissive'}${' '.repeat(25 - (this.options.requireKeypoint ? 6 : 9))}║
-║ Protocols: HTTP/HTTPS${this.wsGuard ? ' + WebSocket' : ''}${' '.repeat(25 - (this.wsGuard ? 21 : 10))}║
-║ Plugins:   ${this.pluginManager.getPluginNames().length} loaded${' '.repeat(20 - this.pluginManager.getPluginNames().length.toString().length)}║
-║ Keypoints: ${this.keypointStorage.store.size} registered${' '.repeat(20 - this.keypointStorage.store.size.toString().length)}║
-╚═══════════════════════════════════════════════╝
-        `);
-        
-        // Emit event
-        this.emit('server:started', {
-          host: actualHost,
-          port: actualPort,
-          timestamp: new Date()
+        if (callback) callback(servers);
+        resolve(servers);
+      });
+      
+      // Start HTTPS server if available
+      if (servers.https) {
+        const httpsPort = this.options.httpsPort || port + 1;
+        servers.https.listen(httpsPort, hostname, () => {
+          console.log(`HTTPS server started on port ${httpsPort}`);
         });
-        
-        if (callback) callback(server);
-        resolve(server);
+      }
+      
+      // Start gRPC server if available
+      if (servers.grpc && this.options.enableGrpc) {
+        const grpcPort = this.options.grpcPort || port + 2;
+        servers.grpc.start(grpcPort);
+      }
+      
+      // Error handling
+      servers.http.on('error', (error) => {
+        this.emit('server:error', { protocol: 'http', error, timestamp: new Date() });
       });
       
-      server.on('error', (error) => {
-        this.emit('server:error', { error, timestamp: new Date() });
-        reject(error);
-      });
-      
-      // Handle graceful shutdown
-      process.on('SIGTERM', () => this.shutdown());
-      process.on('SIGINT', () => this.shutdown());
+      // Graceful shutdown
+      process.on('SIGTERM', () => this.shutdown(servers));
+      process.on('SIGINT', () => this.shutdown(servers));
       
     } catch (error) {
       reject(error);
     }
   });
+}
+
+// NEW METHOD: Improved server startup logging
+logServerStart(address, servers) {
+  const actualHost = address.address;
+  const actualPort = address.port;
+  
+  const protocols = ['HTTP'];
+  if (servers.https) protocols.push('HTTPS');
+  if (this.options.enableWebSocket) protocols.push('WebSocket');
+  if (this.options.enableGrpc) protocols.push('gRPC');
+  
+  const protocolStr = protocols.join(' / ');
+  
+  console.log(`
+╔═══════════════════════════════════════════════╗
+║            KeypointJS Server Started          ║
+╠═══════════════════════════════════════════════╣
+║ Address:   ${actualHost}:${actualPort}${' '.repeat(20 - (actualHost.length + actualPort.toString().length))}║
+║ Mode:      ${this.options.requireKeypoint ? 'Strict' : 'Permissive'}${' '.repeat(25 - (this.options.requireKeypoint ? 6 : 9))}║
+║ Protocols: ${protocolStr}${' '.repeat(25 - protocolStr.length)}║
+║ Plugins:   ${this.pluginManager.getPluginNames().length} loaded${' '.repeat(20 - this.pluginManager.getPluginNames().length.toString().length)}║
+║ Keypoints: ${this.keypointStorage.store.size} registered${' '.repeat(20 - this.keypointStorage.store.size.toString().length)}║
+║ Engines:   ${this.protocolEngine.engines.size} available${' '.repeat(20 - this.protocolEngine.engines.size.toString().length)}║
+╚═══════════════════════════════════════════════╝
+  `);
+  
+  this.emit('server:started', {
+    host: actualHost,
+    port: actualPort,
+    protocols,
+    timestamp: new Date()
+  });
+}
+
+// Protocol-specific configuration methods
+enableProtocol(protocol, options = {}) {
+  switch (protocol.toLowerCase()) {
+    case 'websocket':
+    case 'ws':
+      this.options.enableWebSocket = true;
+      if (!this.wsGuard) {
+        this.enableWebSocket(options);
+      }
+      break;
+      
+    case 'grpc':
+      this.options.enableGrpc = true;
+      this.configureProtocolEngine({ enableGrpc: true });
+      break;
+      
+    case 'http2':
+      this.options.enableHttp2 = true;
+      this.configureProtocolEngine({ http2: true });
+      break;
+      
+    default:
+      console.warn(`Unknown protocol: ${protocol}`);
+  }
+  return this;
+}
+
+// Get available protocols
+getAvailableProtocols() {
+  const protocols = Array.from(this.protocolEngine.engines.keys());
+  const available = [];
+  
+  for (const protocol of protocols) {
+    if (protocol === 'http' || protocol === 'https') {
+      available.push(protocol.toUpperCase());
+    } else if (protocol === 'ws' || protocol === 'wss') {
+      if (this.options.enableWebSocket) {
+        available.push('WebSocket');
+      }
+    } else if (protocol.startsWith('grpc')) {
+      if (this.options.enableGrpc) {
+        available.push('gRPC');
+      }
+    }
+  }
+  
+  return [...new Set(available)]; // Remove duplicates
+}
+
+// Register custom protocol engine
+registerProtocolEngine(protocol, engine) {
+  this.protocolEngine.registerEngine(protocol, engine);
+  return this;
 }
 
   
@@ -709,31 +920,44 @@ listen(port, hostname = '0.0.0.0', callback) {
   // Statistics
   
   getStats() {
-    const uptime = Date.now() - this.stats.startTime;
-    
-    return {
-      ...this.stats,
-      uptime,
-      uptimeFormatted: this.formatUptime(uptime),
-      successRate: this.stats.requests > 0 
-        ? (this.stats.successful / this.stats.requests * 100).toFixed(2) + '%'
-        : '0%',
-      plugins: this.pluginManager.getStats(),
-      keypoints: {
-        total: this.keypointStorage.store.size,
-        expired: (async () => {
-          const all = await this.keypointStorage.list();
-          return all.filter(k => k.isExpired()).length;
-        })(),
-        active: (async () => {
-          const all = await this.keypointStorage.list();
-          return all.filter(k => !k.isExpired()).length;
-        })()
-      },
-      routes: this.router.routes.size,
-      policies: this.policyEngine.rules.length
-    };
+  const uptime = Date.now() - this.stats.startTime;
+  
+  // Get protocol distribution from recent requests
+  const protocolStats = {};
+  if (this.stats.protocols) {
+    for (const [protocol, count] of Object.entries(this.stats.protocols)) {
+      protocolStats[protocol] = count;
+    }
   }
+  
+  return {
+    ...this.stats,
+    uptime,
+    uptimeFormatted: this.formatUptime(uptime),
+    successRate: this.stats.requests > 0 ?
+      (this.stats.successful / this.stats.requests * 100).toFixed(2) + '%' :
+      '0%',
+    protocols: {
+      available: this.getAvailableProtocols(),
+      distribution: protocolStats,
+      engines: this.protocolEngine.engines.size
+    },
+    plugins: this.pluginManager.getStats(),
+    keypoints: {
+      total: this.keypointStorage.store.size,
+      expired: (async () => {
+        const all = await this.keypointStorage.list();
+        return all.filter(k => k.isExpired()).length;
+      })(),
+      active: (async () => {
+        const all = await this.keypointStorage.list();
+        return all.filter(k => !k.isExpired()).length;
+      })()
+    },
+    routes: this.router.routes.size,
+    policies: this.policyEngine.rules.length
+  };
+}
   
   formatUptime(ms) {
     const seconds = Math.floor(ms / 1000);
@@ -846,9 +1070,41 @@ export class ValidationError extends Error {
 
 // Export utilities
 
+// At the bottom of the file, add example exports
+export const ProtocolExamples = {
+  // Example WebSocket configuration
+  webSocketConfig: {
+    path: '/ws',
+    requireKeypoint: true,
+    pingInterval: 30000,
+    maxConnections: 1000
+  },
+  
+  // Example gRPC configuration
+  grpcConfig: {
+    enableReflection: true,
+    maxMessageSize: '4mb',
+    keepaliveTime: 7200000
+  },
+  
+  // Example multi-protocol configuration
+  multiProtocolConfig: {
+    enableWebSocket: true,
+    enableGrpc: true,
+    enableHttp2: true,
+    trustedProxies: ['192.168.1.0/24', '10.0.0.0/8'],
+    protocolEngines: {
+      // Custom protocol engines can be added here
+    }
+  }
+};
+
 export {
   Context,
   ProtocolEngine,
+  ProtocolError,
+  // Protocol engines (optional exports)
+  // Note: These are re-exported from ProtocolEngine.js
   Keypoint,
   KeypointContext,
   KeypointValidator,
@@ -861,5 +1117,14 @@ export {
   BuiltInHooks,
   RateLimiter,
   AuditLogger,
-  WebSocketGuard
+  WebSocketGuard,
+  AccessDecision,
 };
+
+// TypeScript/IntelliSense,
+/*
+ * @typedef {import('./core/ProtocolEngine.js').HttpEngine} HttpEngine
+ * @typedef {import('./core/ProtocolEngine.js').GrpcEngine} GrpcEngine  
+ * @typedef {import('./core/ProtocolEngine.js').WsEngine} WsEngine
+ * @typedef {import('./core/ProtocolEngine.js').ProtocolAdapter} ProtocolAdapter
+ */

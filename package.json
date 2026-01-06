@@ -1,9 +1,9 @@
 {
   "name": "keypointjs",
-  "version": "1.1.1",
+  "version": "1.2.2",
   "description": "KeypointJS Identity-First API Framework with Mandatory Authentication",
-  "main": "src/keypointJS.js",
   "type": "module",
+  "main": "src/keypointJS.js",
   "exports": {
     ".": "./src/keypointJS.js",
     "./keypoint": "./src/keypoint/Keypoint.js",
@@ -11,6 +11,8 @@
     "./keypoint/storage": "./src/keypoint/KeypointStorage.js",
     "./keypoint/validator": "./src/keypoint/KeypointValidator.js",
     "./keypoint/scopes": "./src/keypoint/ScopeManager.js",
+    "./router": "./src/router/MinimalRouter.js",
+    "./protocol": "./src/core/PA.js",
     "./plugins": "./src/plugins/PluginManager.js",
     "./plugins/transformer": "./src/plugins/transformer/TransformerPlugin.js",
     "./plugins/audit": "./src/plugins/AuditLogger.js",
@@ -18,11 +20,9 @@
     "./plugins/websocket": "./src/plugins/WebSocketGuard.js",
     "./policy": "./src/policy/PolicyEngine.js",
     "./policy/rules": "./src/policy/PolicyRule.js",
-    "./policy/decision": "./src/policy/AccessDecision.js",
-    "./router": "./src/router/MinimalRouter.js",
-    "./core": "./src/core/Context.js",
-    "./core/protocol": "./src/core/ProtocolEngine.js"
+    "./policy/decision": "./src/policy/AccessDecision.js"
   },
+  
   "scripts": {
     "test": "node --test test/basic.test.js",
     "test:all": "node --test test/*.test.js",
@@ -32,40 +32,48 @@
     "start": "node examples/server.js",
     "prepublishOnly": "npm test"
   },
+  
   "keywords": [
     "authentication",
     "authorization",
     "api",
     "security",
-    "middleware",
-    "keypoint",
-    "nodejs",
+    "identity",
+    "protocol",
     "websocket",
-    "rate-limiting",
-    "audit-logging"
+    "grpc",
+    "nodejs",
+    "framework"
   ],
+  
   "author": "AnasBex",
-  "website": "https://anasbex.vercel.app",
   "license": "Apache-2.0",
+  
   "repository": {
     "type": "git",
     "url": "git+https://github.com/anasbex-dev/keypointjs.git"
   },
+  
   "bugs": {
     "url": "https://github.com/anasbex-dev/keypointjs/issues"
   },
+  
   "homepage": "https://github.com/anasbex-dev/keypointjs#readme",
+  
   "engines": {
     "node": ">=18.0.0"
   },
+  
   "files": [
     "src/",
     "README.md",
     "LICENSE"
   ],
+  
   "dependencies": {
     "ws": "^8.14.2"
   },
+  
   "optionalDependencies": {
     "bufferutil": "^4.0.8",
     "utf-8-validate": "^6.0.3"
