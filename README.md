@@ -14,11 +14,13 @@
   <img alt="Node.js" src="https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green">
   <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Ready-blue">
   <img alt="Tests" src="https://img.shields.io/badge/tests-100%25%20passing-brightgreen">
+
+  [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/anasbex)
 </p>
 
 **A Modern, Extensible Authentication & Authorization Framework for Node.js**
 
-[Quick Start](#quick-start) • [Documentation](#documentation) • [Examples](#examples) • [Contributing](./CONTRIBUTING.md)
+[Quick Start](#quick-start) • [Documentation](#documentation) • [Examples](#examples) • [Contributing](./CONTRIBUTING.md) • 
 [Philosophy](./philosophyEN.md)
 
 </div>
