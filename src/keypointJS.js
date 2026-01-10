@@ -15,7 +15,7 @@ import { ScopeManager } from './keypoint/ScopeManager.js';
 import { PolicyEngine } from './policy/PolicyEngine.js';
 import { BuiltInRules } from './policy/PolicyRule.js';
 import { MinimalRouter } from './router/MinimalRouter.js';
-import { PluginManager, BuiltInHooks } from './plugins/PluginManager.js';
+import { PluginManager, BuiltInHooks } from './core/PluginManager.js';
 import { RateLimiter } from './plugins/RateLimiter.js';
 import { AuditLogger } from './plugins/AuditLogger.js';
 import { WebSocketGuard } from './plugins/WebSocketGuard.js';
