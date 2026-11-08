@@ -144,6 +144,17 @@ See the [HTML Parser guide](./docs/html-parser.md) for imports, limits, DOM meth
 
 ---
 
+## Documentation
+
+* [Getting Started](./docs/getting-started.md)
+* [API Reference](./docs/api-reference.md)
+* [Authentication](./docs/authentication.md) · [Authorization](./docs/authorization.md) · [Scope Management](./docs/scope-management.md)
+* [Policy Engine](./docs/policy-engine.md) · [Rate Limiting](./docs/rate-limiting.md) · [WebSocket Security](./docs/websocket-security.md)
+* [Plugin System](./docs/plugin-system.md) · [Storage](./docs/storage.md) · [Configuration](./docs/configuration.md)
+* [Examples](./docs/examples.md) · [Security Best Practices](./docs/security-best-practices.md) · [HTML Parser](./docs/html-parser.md)
+
+---
+
 ## Security Notes
 
 * Keypoint validation is enabled by default. The validator requires a keypoint ID and checks expiration; secret verification occurs only when a secret header is present.
@@ -207,7 +218,7 @@ Apache-2.0 license - see the LICENSE file for details.
 
 ## Support
 
-* Documentation: [README](./README.md) and [HTML Parser guide](./docs/html-parser.md)
+* Documentation: [Documentation index](#documentation)
 * Issues: Report bugs via GitHub issues
 * Contributions: PRs welcome
 * Questions: Open a discussion for usage questions
