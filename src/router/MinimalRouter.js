@@ -30,11 +30,29 @@ export class MinimalRouter {
     
     const handler = this.routes.get(key);
     if (!handler) {
-      throw new Error(`Route not found: ${key}`, 404);
+      const allowedMethods = [...this.routes.keys()]
+        .filter((routeKey) => routeKey.slice(routeKey.indexOf(':') + 1) === request.url.pathname)
+        .map((routeKey) => routeKey.slice(0, routeKey.indexOf(':')));
+
+      if (request.method === 'OPTIONS' && allowedMethods.length > 0) {
+        context.response = {
+          status: 204,
+          headers: { Allow: [...new Set([...allowedMethods, 'OPTIONS'])].sort().join(', ') },
+          body: null
+        };
+        return context;
+      }
+
+      context.response = {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+        body: { error: 'Not Found', code: 404 }
+      };
+      return context;
     }
     
     const result = await handler(context);
-    context.response = result;
+    if (result !== context) context.response = result;
     
     return context;
   }

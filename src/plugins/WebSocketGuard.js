@@ -14,6 +14,8 @@ export class WebSocketGuard {
     
     this.wss = null;
     this.connections = new Map();
+    this.pendingConnections = 0;
+    this.pingTimer = null;
     this.messageHandlers = new Map();
     this.connectionCallbacks = [];
     this.disconnectionCallbacks = [];
@@ -30,7 +32,26 @@ export class WebSocketGuard {
       server: httpServer,
       path: this.options.path,
       verifyClient: (info, callback) => {
-        this.options.verifyClient(info, callback, keypointJS);
+        const maxConnections = Number(this.options.maxConnections);
+        if (this.connections.size + this.pendingConnections >= maxConnections) {
+          callback(false, 503, 'Maximum WebSocket connections reached');
+          return;
+        }
+
+        this.pendingConnections++;
+        let completed = false;
+        const finish = (accepted, ...args) => {
+          if (completed) return;
+          completed = true;
+          if (!accepted) this.pendingConnections--;
+          callback(accepted, ...args);
+        };
+
+        try {
+          this.options.verifyClient(info, finish, keypointJS);
+        } catch (error) {
+          finish(false, 500, error.message);
+        }
       }
     });
     
@@ -73,7 +94,15 @@ export class WebSocketGuard {
   }
   
   setupWebSocketHandlers(keypointJS) {
+    if (this.pingTimer) clearInterval(this.pingTimer);
+
     this.wss.on('connection', (ws, req) => {
+      if (this.pendingConnections > 0) this.pendingConnections--;
+      if (this.connections.size >= Number(this.options.maxConnections)) {
+        ws.close(1013, 'Maximum WebSocket connections reached');
+        return;
+      }
+
       const connectionId = this.generateConnectionId();
       const keypointId = req.headers[this.options.keypointHeader];
       
@@ -136,7 +165,7 @@ export class WebSocketGuard {
     });
     
     // Setup ping interval
-    setInterval(() => {
+    this.pingTimer = setInterval(() => {
       this.checkConnections();
     }, this.options.pingInterval);
   }
@@ -202,7 +231,7 @@ export class WebSocketGuard {
       
       if (idleTime > timeout) {
         connection.ws.terminate();
-        this.connections.delete(connectionId);
+        this.handleDisconnection(connectionId);
       } else {
         // Send ping
         connection.ws.ping();
@@ -340,12 +369,27 @@ export class WebSocketGuard {
   }
   
   cleanup() {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+
+    for (const connectionId of [...this.connections.keys()]) {
+      const connection = this.connections.get(connectionId);
+      try {
+        connection.ws.close(1001, 'Server shutting down');
+      } catch {
+        connection.ws.terminate?.();
+      }
+      this.handleDisconnection(connectionId);
+    }
+
     if (this.wss) {
       this.wss.close();
       this.wss = null;
     }
     
-    this.connections.clear();
+    this.pendingConnections = 0;
     this.messageHandlers.clear();
   }
 }

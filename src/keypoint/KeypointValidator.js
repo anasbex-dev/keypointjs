@@ -1,6 +1,9 @@
+import { KeypointError } from './KeypointError.js';
+import { MemoryKeypointStorage } from './KeypointStorage.js';
+
 export class KeypointValidator {
   constructor(storage) {
-    this.storage = storage || new KeypointStorage();
+    this.storage = storage || new MemoryKeypointStorage();
   }
   
   async validate(context) {
@@ -41,7 +44,7 @@ export class KeypointValidator {
   
   extractKeypointId(request) {
     return request.headers['x-keypoint-id'] || 
-           request.query.keypointId;
+           request.query?.keypointId;
   }
   
   async verifySecret(keypoint, providedSecret) {

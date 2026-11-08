@@ -10,6 +10,7 @@ import { ProtocolEngine, ProtocolError } from './core/ProtocolEngine.js';
 import { Keypoint } from './keypoint/Keypoint.js';
 import { KeypointContext } from './keypoint/KeypointContext.js';
 import { KeypointValidator } from './keypoint/KeypointValidator.js';
+import { KeypointError } from './keypoint/KeypointError.js';
 import { MemoryKeypointStorage } from './keypoint/KeypointStorage.js';
 import { ScopeManager } from './keypoint/ScopeManager.js';
 import { PolicyEngine } from './policy/PolicyEngine.js';
@@ -275,6 +276,7 @@ this.use(async (ctx, next) => {
     ctx.request = {
       ...ctx.request,
       ...processed.request,
+      protocol: originalProtocol,
       originalRequest: ctx.request
     };
     
@@ -462,10 +464,8 @@ this.use(async (ctx, next) => {
     
     // Handle preflight requests
     if (ctx.method === 'OPTIONS') {
-      ctx.response = {
-        status: 204,
-        headers: ctx.response.headers
-      };
+      ctx.response.status = 204;
+      ctx.response.body = null;
       return;
     }
     
@@ -593,7 +593,7 @@ this.use(async (ctx, next) => {
   // Request handling
   
   async handleRequest(request, response) {
-  const ctx = new KeypointContext(request);
+  const ctx = new KeypointContext(request, this.scopeManager);
   this.stats.requests++;
   
   try {
@@ -1038,16 +1038,6 @@ registerProtocolEngine(protocol, engine) {
 
 // Custom Error Classes
 
-export class KeypointError extends Error {
-  constructor(message, code = 401, details = {}) {
-    super(message);
-    this.name = 'KeypointError';
-    this.code = code;
-    this.details = details;
-    this.timestamp = new Date();
-  }
-}
-
 export class PolicyError extends Error {
   constructor(message, code = 403, decision = null) {
     super(message);
@@ -1103,6 +1093,7 @@ export {
   Context,
   ProtocolEngine,
   ProtocolError,
+  KeypointError,
   // Protocol engines (optional exports)
   // Note: These are re-exported from ProtocolEngine.js
   Keypoint,

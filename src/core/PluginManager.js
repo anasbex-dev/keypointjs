@@ -15,7 +15,7 @@ export class PluginManager {
     
     // Initialize plugin
     plugin.name = pluginName;
-    plugin.options = options;
+    plugin.options = { ...(plugin.options || {}), ...options };
     plugin.enabled = true;
     
     this.plugins.set(pluginName, plugin);

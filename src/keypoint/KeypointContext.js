@@ -1,9 +1,10 @@
 import { Context } from '../core/Context.js';
 
 export class KeypointContext extends Context {
-  constructor(request) {
+  constructor(request, scopeManager = null) {
     super(request);
     this.keypoint = null;
+    this.scopeManager = scopeManager;
     this.scopes = [];
     this.rateLimit = null;
     this.accessLog = [];
@@ -12,17 +13,20 @@ export class KeypointContext extends Context {
   // Keypoint-specific methods
   hasScope(scope) {
     if (!this.keypoint) return false;
+    if (this.scopeManager) {
+      return this.scopeManager.hasScope(this.keypoint.scopes, scope);
+    }
     return this.keypoint.hasScope(scope);
   }
   
   hasAnyScope(scopes) {
     if (!this.keypoint) return false;
-    return scopes.some(scope => this.keypoint.hasScope(scope));
+    return scopes.some(scope => this.hasScope(scope));
   }
   
   hasAllScopes(scopes) {
     if (!this.keypoint) return false;
-    return scopes.every(scope => this.keypoint.hasScope(scope));
+    return scopes.every(scope => this.hasScope(scope));
   }
   
   getKeypointId() {

@@ -1,7 +1,7 @@
 // core/GrpcEngine.js
 
 import { BaseProtocolEngine } from './BPE.js';
-import crypto from 'crypto';
+import { ProtocolError } from './ProtocolEngine.js';
 
 export class GrpcEngine extends BaseProtocolEngine {
   constructor(options = {}) {
@@ -23,12 +23,12 @@ export class GrpcEngine extends BaseProtocolEngine {
   
   async detect(connection) {
     // Detect gRPC over various transports
-    const alpnProtocol = connection.alpnProtocol;
+    const alpnProtocol = connection.alpnProtocol || connection.socket?.alpnProtocol;
     
     if (alpnProtocol === 'h2') {
       // gRPC over HTTP/2
       return 'grpc+http2';
-    } else if (connection.encrypted) {
+    } else if (connection.encrypted || connection.socket?.encrypted) {
       // gRPC over TLS
       return 'grpc+tls';
     }
@@ -78,7 +78,13 @@ export class GrpcEngine extends BaseProtocolEngine {
     }
     
     const compressed = buffer.readUInt8(0);
+    if (compressed !== 0 && compressed !== 1) {
+      throw new Error('Invalid gRPC compression flag');
+    }
     const length = buffer.readUInt32BE(1);
+    if (buffer.length !== 5 + length) {
+      throw new Error('Invalid gRPC message length');
+    }
     const message = buffer.slice(5, 5 + length);
     
     if (compressed === 1) {
@@ -89,7 +95,7 @@ export class GrpcEngine extends BaseProtocolEngine {
     return { raw: message, length };
   }
   
-  decompress(buffer) {
+  async decompress(buffer) {
     // Implement compression based on options
     if (this.options.compression === 'gzip') {
       const zlib = await import('zlib');
@@ -100,7 +106,16 @@ export class GrpcEngine extends BaseProtocolEngine {
         });
       });
     }
-    return buffer;
+    if (this.options.compression === 'deflate') {
+      const zlib = await import('zlib');
+      return new Promise((resolve, reject) => {
+        zlib.inflate(buffer, (err, result) => {
+          if (err) reject(err);
+          else resolve(result);
+        });
+      });
+    }
+    throw new ProtocolError('Compressed gRPC message received without a supported compression setting', 400);
   }
   
   async validate(context) {
@@ -195,6 +210,13 @@ export class GrpcEngine extends BaseProtocolEngine {
     for (const interceptor of this.interceptors) {
       await interceptor(context);
     }
+  }
+
+  parseSizeLimit() {
+    const match = /^\s*(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)\s*$/i.exec(String(this.options.maxMessageSize));
+    if (!match) return 4 * 1024 * 1024;
+    const units = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 };
+    return Number(match[1]) * units[match[2].toLowerCase()];
   }
   
   createGRPCResponse(message, options = {}) {

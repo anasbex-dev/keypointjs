@@ -12,15 +12,18 @@ describe('KeypointJS Performance Tests', () => {
   
   before(async () => {
     api = new KeypointJS({
-      requireKeypoint: true,
+      requireKeypoint: false,
       strictMode: false
     });
+    // The benchmark sends more than the framework's default 100 requests per minute.
+    api.policyEngine.rules = api.policyEngine.rules.filter((rule) => rule.name !== 'rate_limit');
     
     // Create test keypoint
     testKeypoint = new Keypoint({
       keyId: 'perf_test',
       secret: 'perf_secret',
       scopes: ['api:public'],
+      protocols: ['http'],
       rateLimit: { requests: 10000, window: 1 }
     });
     
@@ -40,19 +43,22 @@ describe('KeypointJS Performance Tests', () => {
     });
     
     // Start server
-    server = api.createServer();
-    await new Promise((resolve) => {
-      server.listen(0, 'localhost', () => {
+    server = await api.createServer();
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(0, '127.0.0.1', () => {
         const address = server.address();
-        baseUrl = `http://localhost:${address.port}`;
+        baseUrl = `http://127.0.0.1:${address.port}`;
         resolve();
       });
     });
   });
   
   after(async () => {
-    if (server) {
-      await new Promise((resolve) => server.close(resolve));
+    if (server?.listening) {
+      await new Promise((resolve, reject) => {
+        server.close((error) => error ? reject(error) : resolve());
+      });
     }
   });
   

@@ -11,6 +11,7 @@
     "./keypoint/storage": "./src/keypoint/KeypointStorage.js",
     "./keypoint/validator": "./src/keypoint/KeypointValidator.js",
     "./keypoint/scopes": "./src/keypoint/ScopeManager.js",
+    "./html-parser": "./src/html/index.js",
     "./router": "./src/router/MinimalRouter.js",
     "./protocol": "./src/core/PA.js",
     "./plugins": "./src/plugins/PluginManager.js",
@@ -66,6 +67,7 @@
   
   "files": [
     "src/",
+    "docs/",
     "README.md",
     "LICENSE"
   ],
@@ -76,6 +78,9 @@
   
   "optionalDependencies": {
     "bufferutil": "^4.0.8",
-    "utf-8-validate": "^6.0.3"
+    "utf-8-validate": "^6.0.3",
+    "css-select": "5.2.2",
+    "css-what": "6.2.2",
+    "parse5": "7.3.0"
   }
 }

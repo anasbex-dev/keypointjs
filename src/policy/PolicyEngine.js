@@ -51,7 +51,9 @@ export class PolicyEngine {
       
       // Check scope
       if (config.scope) {
-        const hasScope = keypoint.hasScope(config.scope);
+        const hasScope = typeof context.hasScope === 'function'
+          ? context.hasScope(config.scope)
+          : keypoint.hasScope(config.scope);
         if (!hasScope) {
           return {
             allowed: false,

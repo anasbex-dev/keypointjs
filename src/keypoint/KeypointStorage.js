@@ -1,3 +1,5 @@
+import { Keypoint } from './Keypoint.js';
+
 export class KeypointStorage {
   constructor(driver = 'memory') {
     this.driver = driver;
@@ -14,6 +16,8 @@ export class KeypointStorage {
       throw new Error('Keypoint must have keyId');
     }
     
+    const existing = this.store.get(keypoint.keyId);
+    if (existing) await this.removeIndexes(existing);
     this.store.set(keypoint.keyId, keypoint);
     
     // Update indexes
@@ -80,11 +84,11 @@ export class KeypointStorage {
     await this.removeIndexes(existing);
     
     // Apply updates
-    const updated = {
+    const updated = Object.assign(Object.create(Object.getPrototypeOf(existing)), existing, {
       ...existing,
       ...updates,
       updatedAt: new Date()
-    };
+    });
     
     // Save updated keypoint
     await this.set(updated);
@@ -104,7 +108,7 @@ export class KeypointStorage {
   
   async removeIndexes(keypoint) {
     // Remove from secret index
-    if (keypoint.secret) {
+    if (keypoint.secret && this.indexes.bySecret.get(keypoint.secret) === keypoint.keyId) {
       this.indexes.bySecret.delete(keypoint.secret);
     }
     
@@ -198,39 +202,95 @@ export class FileKeypointStorage extends KeypointStorage {
   constructor(filePath) {
     super('file');
     this.filePath = filePath;
-    this.loadFromFile();
+    this.ready = this.initializeFromFile();
   }
   
   async loadFromFile() {
+    return this.ready;
+  }
+
+  async initializeFromFile() {
+    const fs = await import('fs/promises');
+    let data;
     try {
-      const fs = await import('fs/promises');
-      const data = await fs.readFile(this.filePath, 'utf-8');
-      const parsed = JSON.parse(data);
-      
-      for (const item of parsed) {
-        await this.set(item);
-      }
+      data = await fs.readFile(this.filePath, 'utf-8');
     } catch (error) {
-      // File doesn't exist or is empty
-      await this.saveToFile();
+      if (error.code !== 'ENOENT') throw error;
+      await this.saveToFileContents();
+      return;
+    }
+
+    const parsed = JSON.parse(data);
+    if (!Array.isArray(parsed)) throw new TypeError('Keypoint storage file must contain an array');
+    for (const item of parsed) {
+      await super.set(new Keypoint(item));
     }
   }
   
   async saveToFile() {
+    await this.ready;
+    return this.saveToFileContents();
+  }
+
+  async saveToFileContents() {
     const fs = await import('fs/promises');
+    const path = await import('path');
+    await fs.mkdir(path.dirname(this.filePath), { recursive: true });
     const data = Array.from(this.store.values());
     await fs.writeFile(this.filePath, JSON.stringify(data, null, 2));
   }
+
+  async get(keyId) {
+    await this.ready;
+    return super.get(keyId);
+  }
+
+  async getBySecret(secret) {
+    await this.ready;
+    return super.getBySecret(secret);
+  }
+
+  async getByName(name) {
+    await this.ready;
+    return super.getByName(name);
+  }
+
+  async getByScope(scope) {
+    await this.ready;
+    return super.getByScope(scope);
+  }
+
+  async list(filter = {}) {
+    await this.ready;
+    return super.list(filter);
+  }
+
+  async count() {
+    await this.ready;
+    return super.count();
+  }
+
+  async cleanupExpired() {
+    await this.ready;
+    return super.cleanupExpired();
+  }
+
+  async update(keyId, updates) {
+    await this.ready;
+    return super.update(keyId, updates);
+  }
   
   async set(keypoint) {
+    await this.ready;
     await super.set(keypoint);
-    await this.saveToFile();
+    await this.saveToFileContents();
     return true;
   }
   
   async delete(keyId) {
+    await this.ready;
     const result = await super.delete(keyId);
-    if (result) await this.saveToFile();
+    if (result) await this.saveToFileContents();
     return result;
   }
 }

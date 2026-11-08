@@ -1,4 +1,4 @@
-# KeypointJS - Complete Documentation
+# KeyPointJS
 
 <div align="center">
 
@@ -12,15 +12,13 @@
   <img alt="Version" src="https://img.shields.io/npm/v/keypointjs">
   <img alt="Downloads" src="https://img.shields.io/npm/dm/keypointjs?style=for-the-badge">
   <img alt="Node.js" src="https://img.shields.io/badge/Node.js-%3E%3D18.0.0-green">
-  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-Ready-blue">
-  <img alt="Tests" src="https://img.shields.io/badge/tests-100%25%20passing-brightgreen">
 
   [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/anasbex)
 </p>
 
-**A Modern, Extensible Authentication & Authorization Framework for Node.js**
+**A security-focused API authentication and authorization framework for Node.js**
 
-[Quick Start](#quick-start) • [Documentation](#documentation) • [Examples](#examples) • [Contributing](./CONTRIBUTING.md) • 
+[Quick Start](#quick-start) • [Architecture](#architecture) • [HTML Parser](#html-parser) • [Contributing](./CONTRIBUTING.md) •
 [Philosophy](./philosophyEN.md) • 
 [KeypointJS Web](https://keypointjs.vercel.app)
 
@@ -30,13 +28,16 @@
 
 ## Project Overview
 
-KeypointJS is a layered authentication and authorization framework for Node.js, featuring:
+KeyPointJS is primarily an API security framework. Its request pipeline supports:
 
-* Secure, production-ready authentication & authorization
-* Plugin architecture for extensibility
-* Real-time WebSocket support
-* Audit logging and monitoring
-* Built-in policy engine and scope management
+* Keypoint validation, expiration checks, and optional secret verification.
+* Scope checks, including registered scope inheritance.
+* Policy rules for methods, origins, IP addresses, rate limits, time windows, and scopes.
+* Optional origin validation, CORS handling, and trusted-proxy-aware client IP extraction.
+* Built-in audit logging and rate-limiter plugins, plus custom plugins and hooks.
+* HTTP routing, request processing, and an optional WebSocket guard.
+
+The framework provides security mechanisms, but deployment security depends on configuration and review of the specific policies in use. See [Security notes](#security-notes).
 
 ---
 
@@ -50,9 +51,9 @@ KeypointJS is a layered authentication and authorization framework for Node.js, 
 ├─────────────────────────────────┤
 │ Layer 1: Protocol Engine        │
 ├─────────────────────────────────┤
-│ Layer 2: CORS Middleware        │
+│ Layer 2: CORS (when enabled)     │
 ├─────────────────────────────────┤
-│ Layer 3: Keypoint Validation    │
+│ Layer 3: Keypoint validation*   │
 ├─────────────────────────────────┤
 │ Layer 4: Policy Check           │
 ├─────────────────────────────────┤
@@ -64,57 +65,24 @@ KeypointJS is a layered authentication and authorization framework for Node.js, 
 └─────────────────────────────────┘
 ```
 
+`*` Keypoint validation runs when `requireKeypoint` is enabled (the default). CORS middleware is added only when `enableCORS` is enabled. Policy evaluation, plugins, routing, and response processing follow in that order.
+
 ---
 
 ## File Structure & Responsibilities
 
-### Core Components (`core/`)
+```text
+src/
+  core/          Protocol engines, base context, and plugin manager
+  keypoint/      Keypoint model, validation, storage, request context, and scopes
+  policy/        Policy engine, built-in rules, and access decisions
+  plugins/       Audit logger, rate limiter, WebSocket guard, and transformer
+  router/        Minimal HTTP method/path router
+  html/          Optional HTML parser and DOM facade
+  keypointJS.js  Framework composition, middleware, server, and public API
+```
 
-* **Context.js**: Base request context
-* Request/Response wrapper
-* State management
-* Plugin data storage
-* JSON, text, HTML helpers
-* Header & query accessors
-
-### Protocol Engine (`ProtocolEngine.js`)
-
-* HTTP/HTTPS/WebSocket detection
-* Body parsing (JSON, form data)
-* IP extraction & validation
-* Request size limiting
-
-### Keypoint System (`keypoint/`)
-
-* **Keypoint.js**: Keypoint entity, scopes, protocols, expiration
-* **KeypointContext.js**: Context extension with scope checking, rate limiting, logging
-* **KeypointStorage.js**: In-memory & file-based storage with indexing
-* **KeypointValidator.js**: Extracts & validates keypoints
-* **ScopeManager.js**: Manages scopes, hierarchy, wildcard patterns
-
-### Policy Engine (`policy/`)
-
-* **PolicyEngine.js**: Rule-based access control
-* **PolicyRule.js**: Built-in & custom rules (method, origin, IP, rate, scope)
-* **AccessDecision.js**: Aggregates rule results
-
-### Plugin System (`plugins/`)
-
-* **PluginManager.js**: Plugin registration, lifecycle, hooks
-* **AuditLogger.js**: Request/response logging with rotation
-* **RateLimiter.js**: Keypoint-based rate limiting
-* **WebSocketGuard.js**: Secure WebSocket connections
-
-### Router (`router/`)
-
-* **MinimalRouter.js**: Simple HTTP router with method/path matching
-
-### Main Framework (`keypointJS.js`)
-
-* Orchestrates all components
-* Server creation & configuration
-* Statistics & health checks
-* Event emission & error handling
+Core request processing is separate from the optional HTML Parser. The parser is imported through its own package subpath and is not part of API request handling.
 
 ---
 
@@ -124,61 +92,64 @@ KeypointJS is a layered authentication and authorization framework for Node.js, 
 
 ```bash
 npm install keypointjs
-# or
-yarn add keypointjs
-# or
-pnpm add keypointjs
 ```
 
 ### Initialization
 
 ```javascript
-import { KeypointJS } from './src/keypointJS.js';
+import { KeypointJS } from 'keypointjs';
 
 const api = new KeypointJS({
-  requireKeypoint: true,
-  strictMode: false,
-  enableCORS: true,
   maxRequestSize: '5mb'
 });
-```
 
-### Create Keypoint
-
-```javascript
-const keypoint = await api.createKeypoint({
-  keyId: 'test_key',
-  secret: 'test_secret',
-  scopes: ['api:public', 'users:read'],
-  protocols: ['https', 'wss'],
-  allowedOrigins: ['https://example.com'],
-  rateLimit: { requests: 1000, window: 3600 }
+await api.createKeypoint({
+  keyId: 'local-demo',
+  secret: 'replace-with-a-local-demo-secret',
+  scopes: ['api:public'],
+  protocols: ['http']
 });
-```
 
-### Define Routes
-
-```javascript
 api.get('/api/data', (ctx) => {
+  if (!ctx.hasScope('api:public')) {
+    return ctx.status(403).json({ error: 'Insufficient scope' });
+  }
+
   return ctx.json({
-    data: 'protected data',
-    keypointId: ctx.getKeypointId(),
-    scopes: ctx.keypoint?.scopes
+    message: 'Authenticated API request',
+    keypointId: ctx.getKeypointId()
   });
 });
 
-api.post('/api/webhook', (ctx) => {
-  return ctx.json({ received: true });
-});
+await api.listen(3000, '127.0.0.1');
 ```
 
-### Start Server
+The key ID and secret above are local placeholders. The current validator requires a keypoint ID, normally supplied through `X-Keypoint-ID`; it also accepts the `keypointId` query parameter. It verifies `X-Keypoint-Secret` only when that header is supplied, so the secret header is not mandatory. This example sends both headers, but consumers should account for the validator's actual behavior when designing authentication.
 
-```javascript
-api.listen(3000, 'localhost', () => {
-  console.log('Server running on port 3000');
-});
+Call the route with:
+
+```bash
+curl http://127.0.0.1:3000/api/data \
+  -H "X-Keypoint-ID: local-demo" \
+  -H "X-Keypoint-Secret: replace-with-a-local-demo-secret"
 ```
+
+---
+
+## HTML Parser
+
+The HTML Parser is an optional supporting module for parsing HTML and querying a DOM-like tree. It is available at `keypointjs/html-parser`; its `parse5`, `css-select`, and `css-what` packages are declared in `optionalDependencies`. The main KeyPointJS entry point does not eagerly load these parser dependencies. Consumers who do not need HTML parsing can omit optional dependencies.
+
+See the [HTML Parser guide](./docs/html-parser.md) for imports, limits, DOM methods, selectors, examples, and limitations. The HTML Parser does not fetch URLs; WebScraper has not been implemented.
+
+---
+
+## Security Notes
+
+* Keypoint validation is enabled by default. The validator requires a keypoint ID and checks expiration; secret verification occurs only when a secret header is present.
+* Origin validation is enabled by default, but a keypoint with no `allowedOrigins` accepts any origin. Configure an explicit allowlist where origin validation is required.
+* `Keypoint.allowedIps` is currently stored on the keypoint but is not enforced by the request validator. The exported IP policy rule is separate, and its CIDR matching is simplified; do not rely on that CIDR check as a security boundary.
+* The framework includes security components, but this README does not claim independent security verification or production readiness. Review the implementation and deployment configuration for your use case.
 
 ---
 
@@ -221,7 +192,7 @@ api.get('/api/users', (ctx) => {
 1. Fork the repository
 2. Create a feature branch (git checkout -b feature/amazing-feature)
 3. Add tests for your changes
-4. Ensure all tests pass (npm test)
+4. Run relevant tests (`npm test`; `npm run test:all` runs all test files)
 5. Commit your changes (git commit -m 'Add amazing feature')
 6. Push to the branch (git push origin feature/amazing-feature)
 7. Open a Pull Request
@@ -236,17 +207,25 @@ Apache-2.0 license - see the LICENSE file for details.
 
 ## Support
 
-* Documentation: Full API documentation in source code
+* Documentation: [README](./README.md) and [HTML Parser guide](./docs/html-parser.md)
 * Issues: Report bugs via GitHub issues
 * Contributions: PRs welcome
 * Questions: Open a discussion for usage questions
 
 ## KeypointJS is Independent
 
-KeypointJS does not depend on Express, Fastify, or any third-party HTTP framework. It ships with its own HTTP server, routing system, middleware pipeline, and security layer.
+KeyPointJS does not depend on Express, Fastify, or another third-party HTTP framework. It uses Node.js HTTP server APIs, its own routing system, middleware pipeline, and security components.
+
+## Design Principles
+
+* **Security first:** authentication and authorization remain the framework's primary purpose. Security behavior should be described according to the implementation, without unsupported guarantees.
+* **Modular architecture:** request processing, validation, policies, plugins, and routing have separate modules.
+* **Backward compatibility:** additive modules should not change existing core imports or APIs.
+* **Minimal dependencies:** runtime dependencies are kept focused; HTML parsing dependencies are optional.
+* **Core and optional separation:** optional utilities must not be required to import or use the API security core.
 
 ## Created Base ♥️ KeypointJS
 
 ### AnasBex - (づ￣ ³￣)づ
 
-KeypointJS provides a comprehensive, layered approach to API security with extensibility through plugins, real-time WebSocket capabilities, and detailed monitoring through audit logging. The framework is production-ready with built-in security features and can be extended to meet specific requirements.
+KeyPointJS is developed as a layered API authentication and authorization framework, with plugin extension points, WebSocket guarding, and audit logging.

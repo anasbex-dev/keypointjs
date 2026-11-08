@@ -87,11 +87,12 @@ export class ScopeManager {
       return true;
     }
     
-    // Check inheritance
-    const inherited = this.getInheritedScopes(requiredScope);
-    return inherited.some(inheritedScope => 
-      availableScopes.includes(inheritedScope)
-    );
+    // A granted parent scope includes its descendants. Use a Set so duplicate
+    // paths through the hierarchy do not affect permission checks.
+    return availableScopes.some(scope => {
+      if (scope === '*') return true;
+      return this.getInheritedScopes(scope).includes(requiredScope);
+    });
   }
   
   hasAnyScope(availableScopes, requiredScopes) {

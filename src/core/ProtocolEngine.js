@@ -1,6 +1,7 @@
 // core/ProtocolEngine.js - VERSION v.1.2.2
 
 import crypto from 'crypto';
+import { BlockList, isIP } from 'node:net';
 
 export class ProtocolEngine {
   constructor(options = {}) {
@@ -38,6 +39,8 @@ export class ProtocolEngine {
     // Register gRPC engine if enabled
     if (this.options.enableGrpc !== false) {
       this.registerEngine('grpc', this.createGrpcEngine());
+      this.registerEngine('grpc+http2', this.createGrpcEngine());
+      this.registerEngine('grpc+tls', this.createGrpcEngine());
     }
     
     // Register custom engines from options
@@ -145,7 +148,8 @@ export class ProtocolEngine {
     };
     
     // Set secure flag
-    context.metadata.secure = protocol === 'https' || protocol === 'wss' || protocol === 'grpc+tls';
+    context.metadata.secure = protocol === 'https' || protocol === 'wss' || protocol === 'grpc+tls' ||
+      (protocol.startsWith('grpc') && (request.connection?.encrypted || request.socket?.encrypted));
     
     // Add client information
     context.metadata.clientInfo = this.extractClientInfo(request);
@@ -179,12 +183,18 @@ export class ProtocolEngine {
   
   // NEW: Multi-engine protocol detection
   async detectProtocolWithEngines(request) {
-    // Try each engine's detection method
-    for (const [protocol, engine] of this.engines) {
+    // Run explicit protocol engines before HTTP, which serves as the fallback.
+    const engines = [...this.engines.entries()].sort(([left], [right]) => {
+      const leftIsHttp = left === 'http' || left === 'https';
+      const rightIsHttp = right === 'http' || right === 'https';
+      return Number(leftIsHttp) - Number(rightIsHttp);
+    });
+
+    for (const [protocol, engine] of engines) {
       try {
         const detected = await engine.detect(request);
         if (detected) {
-          return protocol;
+          return typeof detected === 'string' && this.engines.has(detected) ? detected : protocol;
         }
       } catch (error) {
         // Engine couldn't detect, try next one
@@ -193,35 +203,43 @@ export class ProtocolEngine {
     }
     
     // Fallback to HTTP detection
-    return this.detectHttpProtocol(request) ? 'http' : 'https';
+    return this.detectHttpProtocol(request) || this.options.defaultEngine;
   }
   
   // HTTP Protocol Detection (Enhanced)
   detectHttpProtocol(request) {
+    const headers = request.headers || {};
+
+    // Let protocol-specific engines handle upgrades and gRPC requests.
+    if (headers.upgrade?.toLowerCase() === 'websocket' ||
+        headers['content-type']?.toLowerCase().startsWith('application/grpc')) {
+      return false;
+    }
+
     // Prioritize headers
-    const forwardedProto = request.headers['x-forwarded-proto'];
-    if (forwardedProto) {
-      const clientIP = this.extractIP(request);
-      if (this.isTrustedProxy(clientIP)) {
+    const forwardedProto = headers['x-forwarded-proto'];
+    const proxyIP = this.getRemoteAddress(request);
+    if (forwardedProto && this.isTrustedProxy(proxyIP)) {
         const protocol = forwardedProto.split(',')[0].trim();
-        return protocol === 'https' || protocol === 'http';
-      }
+        if (protocol === 'https' || protocol === 'http') return protocol;
     }
     
     // Check for ALPN protocol (HTTP/2, HTTP/3)
     const alpnProtocol = request.socket?.alpnProtocol;
     if (alpnProtocol) {
-      if (alpnProtocol === 'h2' || alpnProtocol === 'h3') return true;
+      if (alpnProtocol === 'h2' || alpnProtocol === 'h3') {
+        return request.socket?.encrypted ? 'https' : 'http';
+      }
     }
     
     // Standard detection
     const isSecure = request.connection?.encrypted ||
                     request.socket?.encrypted ||
                     request.secure ||
-                    (request.headers['x-arr-ssl'] !== undefined) ||
-                    (request.headers['x-forwarded-ssl'] === 'on');
-    
-    return true; // Always true for HTTP engine
+                    (this.isTrustedProxy(proxyIP) &&
+                      (headers['x-arr-ssl'] !== undefined || headers['x-forwarded-ssl'] === 'on'));
+
+    return isSecure ? 'https' : 'http';
   }
   
   // NEW: WebSocket Protocol Detection
@@ -478,16 +496,31 @@ export class ProtocolEngine {
   }
   
   isTrustedProxy(ip) {
-    if (this.options.trustedProxies.length === 0) return true;
+    if (!ip || !Array.isArray(this.options.trustedProxies) || this.options.trustedProxies.length === 0) {
+      return false;
+    }
     return this.options.trustedProxies.some(proxy =>
       proxy === ip || this.isIPInCIDR(ip, proxy)
     );
   }
   
   isIPInCIDR(ip, cidr) {
-    // Simplified CIDR check
-    const [network, prefix] = cidr.split('/');
-    return ip.startsWith(network);
+    if (typeof cidr !== 'string' || !cidr.includes('/')) return false;
+    const [network, prefixText] = cidr.split('/');
+    const family = isIP(network);
+    if (!family || isIP(ip) !== family) return false;
+
+    const prefix = Number(prefixText);
+    const maxPrefix = family === 4 ? 32 : 128;
+    if (!Number.isInteger(prefix) || prefix < 0 || prefix > maxPrefix) return false;
+
+    try {
+      const blockList = new BlockList();
+      blockList.addSubnet(network, prefix, family === 4 ? 'ipv4' : 'ipv6');
+      return blockList.check(ip, family === 4 ? 'ipv4' : 'ipv6');
+    } catch {
+      return false;
+    }
   }
   
   normalizeHeaders(headers) {
@@ -499,10 +532,28 @@ export class ProtocolEngine {
   }
   
   extractIP(request) {
-    return request.headers['x-forwarded-for']?.split(',')[0].trim() ||
-           request.headers['x-real-ip'] ||
+    const remoteAddress = this.getRemoteAddress(request);
+    const headers = request.headers || {};
+    if (!this.isTrustedProxy(remoteAddress)) return remoteAddress || '0.0.0.0';
+
+    const forwarded = headers['x-forwarded-for']
+      ?.split(',')
+      .map((address) => address.trim())
+      .filter(Boolean);
+    if (forwarded?.length) {
+      let clientAddress = remoteAddress;
+      for (let index = forwarded.length - 1; index >= 0 && this.isTrustedProxy(clientAddress); index--) {
+        clientAddress = forwarded[index];
+      }
+      return clientAddress;
+    }
+
+    return headers['x-real-ip'] || remoteAddress || '0.0.0.0';
+  }
+
+  getRemoteAddress(request) {
+    return request.socket?.remoteAddress ||
            request.connection?.remoteAddress ||
-           request.socket?.remoteAddress ||
            request.connection?.socket?.remoteAddress ||
            '0.0.0.0';
   }

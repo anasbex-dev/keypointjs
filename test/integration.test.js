@@ -9,6 +9,7 @@ import path from 'path';
 describe('KeypointJS Integration Tests', () => {
   let api;
   let testDir;
+  let server;
   
   beforeEach(async () => {
     // Create temp directory for file storage tests
@@ -17,8 +18,16 @@ describe('KeypointJS Integration Tests', () => {
   });
   
   afterEach(async () => {
-    // Cleanup temp directory
-    await fs.rm(testDir, { recursive: true, force: true });
+    try {
+      if (server?.listening) {
+        await new Promise((resolve, reject) => {
+          server.close((error) => error ? reject(error) : resolve());
+        });
+      }
+    } finally {
+      server = null;
+      await fs.rm(testDir, { recursive: true, force: true });
+    }
   });
   
   describe('File Storage', () => {
@@ -88,7 +97,8 @@ describe('KeypointJS Integration Tests', () => {
       const testKeypoint = new Keypoint({
         keyId: 'policy_test',
         secret: 'policy_secret',
-        scopes: ['api:public']
+        scopes: ['api:public'],
+        protocols: ['http']
       });
       
       await api.keypointStorage.set(testKeypoint);
@@ -97,9 +107,10 @@ describe('KeypointJS Integration Tests', () => {
         return ctx.json({ message: 'Policy test passed' });
       });
       
-      const server = api.createServer();
-      await new Promise((resolve) => {
-        server.listen(0, 'localhost', () => resolve());
+      server = await api.createServer();
+      await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
       });
       
       const port = server.address().port;
@@ -111,7 +122,7 @@ describe('KeypointJS Integration Tests', () => {
       };
       
       try {
-        const response = await fetch(`http://localhost:${port}/test/policy`, {
+        const response = await fetch(`http://127.0.0.1:${port}/test/policy`, {
           headers: { 'X-Keypoint-ID': testKeypoint.keyId }
         });
         
@@ -119,7 +130,6 @@ describe('KeypointJS Integration Tests', () => {
         assert.strictEqual(response.status, 200);
       } finally {
         global.Date = originalDate;
-        server.close();
       }
     });
   });
@@ -141,7 +151,8 @@ describe('KeypointJS Integration Tests', () => {
       const adminKeypoint = new Keypoint({
         keyId: 'admin_inherit',
         secret: 'admin_secret',
-        scopes: ['admin']
+        scopes: ['admin'],
+        protocols: ['http']
       });
       
       await api.keypointStorage.set(adminKeypoint);
@@ -161,14 +172,15 @@ describe('KeypointJS Integration Tests', () => {
         });
       });
       
-      const server = api.createServer();
-      await new Promise((resolve) => {
-        server.listen(0, 'localhost', () => resolve());
+      server = await api.createServer();
+      await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(0, '127.0.0.1', resolve);
       });
       
       const port = server.address().port;
       
-      const response = await fetch(`http://localhost:${port}/test/scopes`, {
+      const response = await fetch(`http://127.0.0.1:${port}/test/scopes`, {
         headers: { 'X-Keypoint-ID': adminKeypoint.keyId }
       });
       
@@ -181,7 +193,6 @@ describe('KeypointJS Integration Tests', () => {
       assert.strictEqual(data.hasRead, true);
       assert.strictEqual(data.hasNonexistent, false);
       
-      server.close();
     });
   });
 });
