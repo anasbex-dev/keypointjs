@@ -13,7 +13,9 @@ describe('KeypointJS Performance Tests', () => {
   before(async () => {
     api = new KeypointJS({
       requireKeypoint: false,
-      strictMode: false
+      strictMode: false,
+      // This suite measures HTTP throughput; rate limiting has its own dedicated tests.
+      enableRateLimiter: false
     });
     // The benchmark sends more than the framework's default 100 requests per minute.
     api.policyEngine.rules = api.policyEngine.rules.filter((rule) => rule.name !== 'rate_limit');

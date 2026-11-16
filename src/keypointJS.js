@@ -98,8 +98,9 @@ export class KeypointJS {
     
     if (this.options.enableRateLimiter !== false) {
       const rateLimiter = new RateLimiter({
-        window: this.options.rateLimitWindow || 60000,
-        max: this.options.rateLimitMax || 100
+        window: this.options.rateLimitWindow ?? 60000,
+        max: this.options.rateLimitMax ?? 100,
+        ...(this.options.rateLimiter || {})
       });
       this.registerPlugin(rateLimiter);
     }
@@ -858,6 +859,13 @@ registerProtocolEngine(protocol, engine) {
       requestId: ctx?.id
     }
   };
+
+  if (error.headers && typeof error.headers === 'object' && !Array.isArray(error.headers)) {
+    errorResponse.headers = { ...errorResponse.headers, ...error.headers };
+  }
+  if (Object.prototype.hasOwnProperty.call(error, 'responseBody') && error.responseBody !== undefined) {
+    errorResponse.body = error.responseBody;
+  }
   
   // Add details if allowed
   if (exposeDetails) {
